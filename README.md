@@ -25,6 +25,20 @@
   <b>English</b> · <a href="README.ko.md">한국어</a> · <a href="README.ja.md">日本語</a> · <a href="README.zh.md">中文</a> · <a href="README.ru.md">Русский</a> · <a href="#features">Features</a> · <a href="#install">Install</a>
 </p>
 
+## About this fork
+
+This is a fork of [sampple-korea/dynamicisland](https://github.com/sampple-korea/dynamicisland). Work happens on the `dev` branch; `main` follows upstream.
+
+- **Samsung's music player on the island:** the media card follows the stock One UI player. It shows the cover art across the whole card, a centred "Title • Artist" line, the output device and the player app's icon, and translucent round controls. It plays System UI's own Lottie animations: play/pause morphs, and prev/next arrows that slide out and back in. The seek bar is a live waveform up to a ringed thumb.
+- **New cards:** alarm, calendar, Galaxy Watch, car and workout, shown as Now Bar style cards with their own glyphs. Also Galaxy Buds (battery per side and case, noise mode), Quick Share (sending and receiving), and voice bars on the pill during an answered call.
+- **Removed:** the Gemini integration and the experimental "Dynamic inset" style.
+- **Optimizations:**
+  - frame pacing that lets the panel slow down while only ambient motion runs;
+  - less per-frame garbage: reused font metrics and shapes, and resource IDs resolved once instead of every frame;
+  - steadier rolling numbers in the clocks;
+  - a still waveform in low-performance mode.
+- **Other changes:** iMode paging refinements and a partial Italian translation.
+
 ### Everything the capsule shows, as cards
 
 The pill sits where the stock Now Bar capsule was and opens into cards.
