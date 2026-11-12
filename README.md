@@ -37,6 +37,7 @@ A personal fork of [sampple-korea/dynamicisland](https://github.com/sampple-kore
   - running timers and stopwatches keep 30 fps even with the frame-rate limit on;
   - status-bar icons fade only under the compact pill, not under an opened card;
   - the Buds island rebuilds only when something it shows changes, and loads its icons once.
+  - System UI work removed: lock screen editor opens without freezing, smoother screen on / off (repeated widget recolouring, resource lookups and log spam skipped), fewer task queries from the island. See [docs/SYSTEM-OPTIMIZATIONS.md](docs/SYSTEM-OPTIMIZATIONS.md).
 - **Other changes:** iMode paging refinements and a partial Italian translation.
 
 ## Requirements

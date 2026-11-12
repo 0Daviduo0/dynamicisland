@@ -17,9 +17,10 @@ import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
- * Small System UI performance hooks that keep the shade smooth while the island runs: no repeated
- * blur calls, no GPU cache trimming each time the shade closes, remembered tile
- * animation frames and less log spam. Each hook only skips work that would be redone for nothing.
+ * Small System UI performance hooks that keep the shade and the lock screen smooth while the island runs:
+ * no repeated blur calls, no GPU cache trimming each time the shade closes, remembered tile animation frames
+ * and resource ids, and less log spam (shade, lock screen and AOD). Each hook only skips work that would be
+ * redone for nothing.
  * Hooks run on whichever thread System UI calls them from; shared state is thread-safe or main-thread only.
  */
 public final class ShadePerf {
@@ -48,8 +49,18 @@ public final class ShadePerf {
         "SatelliteModeObserver", "TileLifecycleManager", "NavBarStateManager",
         "ImmersiveScrollPopOverAnimator", "KeyguardSecIndicationPolicy",
         "SecNotificationsQSContainerController", "HotspotTile", "BackActionInteractor",
-        "BLASTBufferQueue_Java", "MultiWindowEdgeDetector", "ImeFocusController"));
-    private static final String[] NOISY_TAG_PREFIXES = {"VRI[", "NowBarItemManager", "SamsungAnalytics", "QuickTile["};
+        "BLASTBufferQueue_Java", "MultiWindowEdgeDetector", "ImeFocusController",
+        // lock screen clock, widgets and AOD: thousands of lines per screen on / off on the main thread
+        "SemWallpaperColorsArea", "FaceWidgetPagesController", "KeyguardFace", "KeyguardFingerprint",
+        "FaceWidgetClockPage", "SecKeyguardClockPositionAlgorithm", "PluginFaceWidgetManager",
+        "ComplicationWidgetHostViewContainer", "FaceWidget_updatePosition", "SecKeyguardClockRepositoryImpl",
+        "MediaExpandStateObserver", "SGGLockStarManager", "WallpaperManager", "KeyguardClockProvider",
+        "Navbar.Store", "NotificationIconsOnlyContainer", "AOD_CONFIG@AODConfigurationController",
+        "FaceWidgetViewModel", "AdaptiveTextColorCalculator", "ViewPositionControllerManager",
+        "FaceWidgetWallpaperUtilsWrapper", "SystemUITextView", "AlwaysOnDisplayEx", "WallpaperEventNotifier",
+        "PluginAODManager"));
+    private static final String[] NOISY_TAG_PREFIXES = {"VRI[", "NowBarItemManager", "SamsungAnalytics", "QuickTile[",
+        "DigitalHorizontalClockView_", "[AOD]", "ClockBlurManager@", "ClockBlurController[", "NowBarColorModel#", "AODDataSettings["};
 
     /** Blur views whose blur info is already cleared, so clearing again can be skipped. */
     private static final Map<View, Boolean> BLUR_CLEARED = new WeakHashMap<>();
@@ -73,6 +84,7 @@ public final class ShadePerf {
         dropLogNoise();
         skipRepeatedBlurReset();
         rememberTileFrames();
+        rememberResourceIds();
     }
 
     /**
@@ -97,7 +109,7 @@ public final class ShadePerf {
         Refl.hookAll(cl, "com.android.systemui.log.QuickPanelLoggerHelper$PanelStateLogger", "log", SafeHook.before("panel state log", p -> p.setResult(null)));
     }
 
-    private static boolean isNoisy(String tag) {
+    static boolean isNoisy(String tag) {
         if (NOISY_TAGS.contains(tag)) {
             return true;
         }
@@ -136,6 +148,86 @@ public final class ShadePerf {
         }));
         if (hooked == 0) {
             XLog.i("semSetBlurInfo not found");
+        }
+    }
+
+    /**
+     * Remembers what {@code ResourcesImpl.getIdentifier(name, type, package)} found. The lock screen clock looks
+     * its resources up by name on every layout pass of the screen on / off animation. An id never changes for one
+     * {@code ResourcesImpl} (overlay or configuration changes bring a new one), and a name not found is not kept.
+     */
+    private static void rememberResourceIds() {
+        Class<?> resourcesImpl = Refl.findClass("android.content.res.ResourcesImpl", null);
+        int hooked = Refl.hookAll(resourcesImpl, "getIdentifier", new SafeHook("resource ids") {
+            @Override
+            protected void before(XC_MethodHook.MethodHookParam p) {
+                int id = ResourceIds.find(p.thisObject, p.args);
+                if (id != 0) {
+                    p.setResult(id);
+                }
+            }
+
+            @Override
+            protected void after(XC_MethodHook.MethodHookParam p) {
+                if (p.getThrowable() == null && p.getResult() instanceof Integer) {
+                    ResourceIds.keep(p.thisObject, p.args, (Integer) p.getResult());
+                }
+            }
+        });
+        if (hooked == 0) {
+            XLog.i("ResourcesImpl.getIdentifier not found");
+        }
+    }
+
+    /** Ids found by name, per {@code ResourcesImpl}; weakly held, so a dropped impl takes its ids along. */
+    static final class ResourceIds {
+        private static final int MAX_PER_IMPL = 512;
+        private static final Map<Object, Map<String, Integer>> IDS = new WeakHashMap<>();
+
+        private ResourceIds() {
+        }
+
+        /** {@code getIdentifier(String name, String defType, String defPackage)} arguments as a key, or null. */
+        static String key(Object[] args) {
+            if (args == null || args.length != 3 || !(args[0] instanceof String)) {
+                return null;
+            }
+            for (int i = 1; i < 3; i++) {
+                if (args[i] != null && !(args[i] instanceof String)) {
+                    return null;
+                }
+            }
+            return args[0] + "\0" + args[1] + "\0" + args[2];
+        }
+
+        /** The id already found for these arguments, or 0. */
+        static int find(Object impl, Object[] args) {
+            String key = key(args);
+            if (impl == null || key == null) {
+                return 0;
+            }
+            synchronized (IDS) {
+                Map<String, Integer> ids = IDS.get(impl);
+                Integer id = ids == null ? null : ids.get(key);
+                return id == null ? 0 : id;
+            }
+        }
+
+        static void keep(Object impl, Object[] args, int id) {
+            String key = key(args);
+            if (impl == null || key == null || id == 0) {
+                return;
+            }
+            synchronized (IDS) {
+                Map<String, Integer> ids = IDS.get(impl);
+                if (ids == null) {
+                    ids = new java.util.HashMap<>();
+                    IDS.put(impl, ids);
+                }
+                if (ids.size() < MAX_PER_IMPL || ids.containsKey(key)) {
+                    ids.put(key, id);
+                }
+            }
         }
     }
 

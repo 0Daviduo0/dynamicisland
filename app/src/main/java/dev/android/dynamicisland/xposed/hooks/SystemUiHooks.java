@@ -105,6 +105,8 @@ public final class SystemUiHooks {
             runGroup("aosp stock chips", () -> AospChips.install(cl, () -> callController != null));
         }
         runGroup("shade performance", () -> ShadePerf.install(cl));
+        runGroup("lock editor launch", () -> LockEditLaunch.install(cl));
+        runGroup("lock widget colors", () -> LockWidgetColors.install(cl));
         runGroup("shade layout callbacks", ShadeLayoutCallbacks::install);
         runGroup("shade live cards", () -> ShadeLiveCards.install(cl));
         runGroup("duplicate originals", () -> HideDuplicated.install(cl));
@@ -405,7 +407,10 @@ public final class SystemUiHooks {
     /** Optional callbacks only: no new binder listener, polling loop, or mandatory OEM symbol. */
     private static void hookForegroundTaskChanges(ClassLoader cl) {
         int attached = 0;
-        XC_MethodHook hook = SafeHook.after("foreground task change", p -> refresh());
+        XC_MethodHook hook = SafeHook.after("foreground task change", p -> {
+            dev.android.dynamicisland.island.ForegroundApp.taskChanged();
+            refresh();
+        });
         for (String name : new String[]{
                 "com.android.systemui.shared.system.TaskStackChangeListeners$Impl",
                 "com.android.wm.shell.common.TaskStackListenerImpl"}) {
@@ -415,6 +420,7 @@ public final class SystemUiHooks {
                 attached += Refl.hookAllHierarchy(cl, name, method, hook);
             }
         }
+        dev.android.dynamicisland.island.ForegroundApp.setTracking(attached > 0);
         Diagnostics.fact("foreground task hooks", String.valueOf(attached));
     }
 

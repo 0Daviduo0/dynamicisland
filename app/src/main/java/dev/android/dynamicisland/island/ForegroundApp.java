@@ -6,20 +6,82 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongConsumer;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/** A fresh task snapshot wins over the vendor's potentially stale base-activity cache. */
-final class ForegroundApp {
+/**
+ * A fresh task snapshot wins over the vendor's potentially stale base-activity cache.
+ * The snapshot is a binder call to system_server; while System UI's task-change callbacks are hooked
+ * ({@link #setTracking}), a snapshot is reused for up to {@link #MAX_REUSE_MS} as long as no task changed,
+ * and a reuse schedules one recheck at its end, so a change the callbacks miss still shows within that time.
+ */
+public final class ForegroundApp {
+    static final long MAX_REUSE_MS = 1000;
+    private static final AtomicLong TASK_CHANGES = new AtomicLong();
+    private static volatile boolean tracking;
+
     private final Supplier<List<Task>> taskQuery;
     private final Supplier<String> cachedPackage;
+    private final LongSupplier clock;
+    /** Asks for one more read after the given delay (ms); may be null. */
+    private final LongConsumer recheck;
+    private List<Task> lastTasks;
+    private long lastChange = -1;
+    private long lastAt;
+    private boolean recheckPosted;
+    private int reads;
+    private int reused;
 
-    ForegroundApp(Context context, Supplier<String> cachedPackage) {
-        this(() -> queryTasks(context), cachedPackage);
+    ForegroundApp(Context context, Supplier<String> cachedPackage, LongConsumer recheck) {
+        this(() -> queryTasks(context), cachedPackage, android.os.SystemClock::uptimeMillis, recheck);
     }
 
     ForegroundApp(Supplier<List<Task>> taskQuery, Supplier<String> cachedPackage) {
+        this(taskQuery, cachedPackage, android.os.SystemClock::uptimeMillis, null);
+    }
+
+    ForegroundApp(Supplier<List<Task>> taskQuery, Supplier<String> cachedPackage, LongSupplier clock, LongConsumer recheck) {
         this.taskQuery = taskQuery;
         this.cachedPackage = cachedPackage;
+        this.clock = clock;
+        this.recheck = recheck;
+    }
+
+    /** A task moved, changed focus or visibility (System UI's task-stack callbacks). Any thread. */
+    public static void taskChanged() {
+        TASK_CHANGES.incrementAndGet();
+    }
+
+    /** Whether the task-change callbacks are hooked; without them every read queries the tasks. */
+    public static void setTracking(boolean on) {
+        tracking = on;
+    }
+
+    /** The task snapshot: reused while no task changed and it is recent, else queried. Main thread only. */
+    private List<Task> tasks() {
+        long now = clock.getAsLong();
+        long change = TASK_CHANGES.get();
+        long age = now - lastAt;
+        if (++reads % 300 == 0) {
+            dev.android.dynamicisland.xposed.XLog.i("foreground tasks: " + reused + " of " + reads + " reads reused");
+        }
+        if (tracking && lastTasks != null && change == lastChange && age >= 0 && age < MAX_REUSE_MS) {
+            if (!recheckPosted && recheck != null) {
+                recheckPosted = true;
+                recheck.accept(MAX_REUSE_MS - age);
+            }
+            reused++;
+            return lastTasks;
+        }
+        lastTasks = null;
+        List<Task> tasks = taskQuery.get();
+        lastTasks = tasks;
+        lastChange = change;
+        lastAt = now;
+        recheckPosted = false;
+        return tasks;
     }
 
     static final class State {
@@ -50,7 +112,7 @@ final class ForegroundApp {
     State read() {
         List<Task> tasks;
         try {
-            tasks = taskQuery.get();
+            tasks = tasks();
         } catch (RuntimeException | LinkageError ignored) {
             // Permission/API failures are uncertain, not a reason to disable later queries.
             tasks = null;

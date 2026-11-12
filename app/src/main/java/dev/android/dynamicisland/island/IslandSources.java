@@ -81,7 +81,8 @@ final class IslandSources {
         this.onChange = onChange;
         WhatsAppCallClock callClock = new WhatsAppCallClock();
         oa = new OaSource(ctx, classLoader, callClock);
-        foregroundApp = new ForegroundApp(ctx, oa::foregroundPackage);
+        Runnable recheckForeground = () -> onChange.run(); // its own runnable: the preview path removes onChange
+        foregroundApp = new ForegroundApp(ctx, oa::foregroundPackage, delay -> main.postDelayed(recheckForeground, delay));
         media = new MediaSource(ctx, main, onChange);
         media.setRecordingFilter(oa::isVoiceRecording);
         cast = new CastSource(ctx);
