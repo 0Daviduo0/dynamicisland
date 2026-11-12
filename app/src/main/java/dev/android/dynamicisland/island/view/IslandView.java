@@ -153,6 +153,8 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
     private final MediaFxCache mediaFx;
     private final Waveform waveform;
     private final RecordingWaveform recordingWaveform;
+    private final CallWaveform callWave;
+    private final RectF callWaveRect = new RectF();
     private final DigitClock clock;
     private final ButtonPress buttons = new ButtonPress();
     private final IconPainter icons;
@@ -182,7 +184,7 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
 
     private final FramePacer framePacer = new FramePacer();
     private final dev.android.dynamicisland.island.graphics.FrameStats frameStats = new dev.android.dynamicisland.island.graphics.FrameStats();
-    private boolean frameRateBoosted;
+    private float requestedRate = REQUESTED_FRAME_RATE_CATEGORY_DEFAULT;
     private TorchBeamVisual torchBeamVisual;
     public TorchBeamVisual torchBeamVisual() {
         if (torchBeamVisual == null) torchBeamVisual = new TorchBeamVisual();
@@ -198,6 +200,7 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
     public IslandView(Context context, IslandHost host) {
         super(context);
         this.host = host != null ? host : IslandHost.NONE;
+        current = new java.lang.ref.WeakReference<>(this);
         metrics = new Metrics(context.getResources().getDisplayMetrics().density);
         paints = new Paints(context.getResources().getDisplayMetrics(), metrics.outlineW);
         trailPaint = paints.trail;
@@ -217,6 +220,7 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         shapes = new Shapes(metrics, scene);
         mediaFx = new MediaFxCache(this);
         waveform = new Waveform(metrics);
+        callWave = new CallWaveform(metrics);
         recordingWaveform = new RecordingWaveform(this.host.recordingAudio());
         clock = new DigitClock(this);
         icons = new IconPainter(metrics, paints, waveform, recordingWaveform, clock, mediaFx, tmpRect, barClip);
@@ -582,8 +586,8 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         notifyHost();
     }
 
-    private void retargetVisibilityGate() {
-        boolean gone = scene.shadeGone || scene.sleeping;
+    void retargetVisibilityGate() {
+        boolean gone = scene.shadeGone || scene.sleeping || scene.vanishing;
         if (scene.sleeping) springs.shadeGate.animateTo(0, .24f, 1f);
         else springs.shadeGate.animateTo(gone ? 0 : 1,
                 gone ? SHADE_GO_RESPONSE : SHADE_BACK_RESPONSE,
@@ -712,6 +716,11 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         return token;
     }
 
+    /** True while there is an activity to show (compact or open), whether or not it is on screen right now. */
+    public boolean hasActivity() {
+        return scene.primary != null || !scene.cards.isEmpty();
+    }
+
     public boolean isExpanded() {
         return scene.mode == Mode.EXPANDED;
     }
@@ -748,7 +757,7 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         if (scene.mode == Mode.HIDDEN && host.hasMinimized() && !scene.suppressed) {
             return false;
         }
-        boolean nothingDrawn = scene.mode == Mode.HIDDEN && springs.visibility.isAtRest()
+        boolean nothingDrawn = scene.mode == Mode.HIDDEN && !scene.vanishing && springs.visibility.isAtRest()
                 && springs.visibility.value() <= 0.001f && scene.cards.isEmpty();
         if (nothingDrawn) {
             return true;
@@ -776,6 +785,41 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
             return false;
         }
         return needsAudio(scene.mainIn) || (springs.split.value() > .003f && needsAudio(scene.bubbleIn));
+    }
+
+    /** An answered call with its running clock: the compact pill shows the clock at the left and voice bars at the right. */
+    public boolean hasCallWaveform(IslandItem item) {
+        return item != null && item.kind == IslandItem.Kind.CALL && item.trailing == IslandItem.Trailing.CHRONOMETER
+                && item.hasChronometer() && ModuleSettings.callWaveform() && !ModuleSettings.callShowTime();
+    }
+
+    float callWaveWidth() {
+        return callWave.width();
+    }
+
+    void drawCallWaveform(Canvas c, IslandItem item, float left, float midY, float alpha) {
+        callWave.draw(c, callWaveRect, left, midY, item.accent, alpha);
+    }
+
+    /** "telecom:key" / "voip:key" of the call whose bars are on screen, or null. */
+    public String callWaveTarget() {
+        if (!ModuleSettings.callWaveform() || renderingPaused || !isAttachedToWindow() || !isShown()
+                || getWindowVisibility() != VISIBLE || scene.visibleAlpha() < .2f || isSuppressedNow() || scene.frozenByShade()) return null;
+        IslandItem call = null;
+        if (scene.iMode != null) {
+            for (IslandItem item : scene.iMode.visibleItems()) if (hasCallWaveform(item)) { call = item; break; }
+        } else if (scene.mode == Mode.COMPACT && scene.mainIn != null && hasCallWaveform(scene.mainIn.content.item)) {
+            call = scene.mainIn.content.item;
+        }
+        if (call == null) return null;
+        String pkg = call.packageName == null ? "" : call.packageName;
+        boolean telecom = call.key.startsWith("call:") && (pkg.isEmpty() || pkg.contains("dialer") || pkg.contains("incallui")
+                || pkg.contains("telecom") || pkg.equals("com.android.phone"));
+        return (telecom ? "telecom:" : "voip:") + call.key;
+    }
+
+    public void onCallAudioFrame() {
+        if (isAttachedToWindow() && !renderingPaused) scheduleFrame();
     }
 
     public boolean hasRecordingWaveform(IslandItem item) {
@@ -811,6 +855,8 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         if (isAttachedToWindow() && !renderingPaused) scheduleFrame();
     }
 
+    private static java.lang.ref.WeakReference<IslandView> current = new java.lang.ref.WeakReference<>(null);
+
     public void drawRecordingWaveform(Canvas canvas, IslandItem item, float left, float midY, float width, float height, float alpha) {
         recordingWaveform.draw(canvas, item, left, midY, width, height, alpha);
     }
@@ -841,16 +887,21 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
     public void doFrame(long frameTimeNanos) {
         frameScheduled = false;
         if (renderingPaused) return;
-        if (!framePacer.allow(ModuleSettings.limitFrameRate(), interactiveMotion(), frameTimeNanos)) {
+        boolean interactiveBefore = interactiveMotion();
+        if (!framePacer.allow(ModuleSettings.limitFrameRate(), interactiveBefore, frameTimeNanos)) {
             scheduleFrame();
             return;
         }
         BlurGovernor.INSTANCE.onFrame(frameTimeNanos, SystemClock.uptimeMillis());
-        noteFrame(frameTimeNanos);
+        noteFrame(frameTimeNanos, interactiveBefore);
         try {
             step(frameTimeNanos);
             failedFrames = 0;
-            boostFrameRate(!ModuleSettings.limitFrameRate() && interactiveMotion());
+            boolean limited = ModuleSettings.limitFrameRate();
+            boolean interactive = interactiveMotion();
+            requestRate(!frameScheduled ? REQUESTED_FRAME_RATE_CATEGORY_DEFAULT
+                    : interactive ? (limited ? REQUESTED_FRAME_RATE_CATEGORY_DEFAULT : REQUESTED_FRAME_RATE_CATEGORY_HIGH)
+                    : FramePacer.ambientFps(limited));
         } catch (Throwable t) {
             lastFrameNanos = 0L;
             XLog.once("IslandView.doFrame", t);
@@ -864,22 +915,40 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
     /**
      * While the island moves it asks for a high frame rate: a window that only draws on its own timer is otherwise
      * given a lower one than the system animations around it (the shade, the launcher), and its pill then looks
-     * choppy next to them. Back to the default as soon as it is still.
+     * choppy next to them. Only ambient motion (music waveform, glow, spinners) asks for its own paced rate, so the
+     * panel can drop to it too instead of refreshing at 60/120 Hz for a 30 fps animation. Back to the default as soon
+     * as it is still.
      */
-    private void boostFrameRate(boolean on) {
-        if (on == frameRateBoosted) return;
-        frameRateBoosted = on;
+    private void requestRate(float rate) {
+        if (Float.compare(rate, requestedRate) == 0) return; // CATEGORY_DEFAULT is NaN: == would never match
+        requestedRate = rate;
         try {
-            setRequestedFrameRate(on ? REQUESTED_FRAME_RATE_CATEGORY_HIGH : REQUESTED_FRAME_RATE_CATEGORY_DEFAULT);
+            setRequestedFrameRate(rate);
         } catch (Throwable t) {
             XLog.once("IslandView.frameRate", t);
+        }
+        // the view vote above is often not forwarded (One UI): vote on the window's surface too, ambient only
+        try {
+            Object root = getClass().getMethod("getViewRootImpl").invoke(this);
+            android.view.SurfaceControl sc = root == null ? null
+                    : (android.view.SurfaceControl) root.getClass().getMethod("getSurfaceControl").invoke(root);
+            if (sc == null || !sc.isValid()) return;
+            float fps = rate > 0f ? rate : 0f;
+            try (android.view.SurfaceControl.Transaction tx = new android.view.SurfaceControl.Transaction()) {
+                tx.setFrameRate(sc, fps, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                        android.view.Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS).apply();
+            }
+        } catch (Throwable t) {
+            XLog.once("IslandView.surfaceFrameRate", t);
         }
     }
 
     /** Keeps count of how evenly the animation frames arrive, for the diagnostics report. */
-    private void noteFrame(long frameTimeNanos) {
-        frameStats.onFrame(frameTimeNanos, interactiveMotion());
-        String report = frameStats.reportIfDue(frameTimeNanos, getDisplay() == null ? 0f : getDisplay().getRefreshRate());
+    private void noteFrame(long frameTimeNanos, boolean interactive) {
+        frameStats.onFrame(frameTimeNanos, interactive);
+        if (!frameStats.due(frameTimeNanos)) return; // the display rate is only read for the report
+        android.view.Display display = getDisplay();
+        String report = frameStats.reportIfDue(frameTimeNanos, display == null ? 0f : display.getRefreshRate());
         if (report != null) dev.android.dynamicisland.xposed.Diagnostics.fact("island animation frames", report);
     }
 
@@ -900,9 +969,11 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         lastFrameNanos = frameTimeNanos;
         long t = now();
         boolean active = springs.step(dt) | buttons.animating();
+        if (scene.vanishing && springs.shadeGate.value() <= 0.01f) director.finishVanish();
         applyShadeFade();
-        if (scene.mode == Mode.HIDDEN && metrics.holeD > 0.0f && springs.visibility.target() > 0.0f
-                && !scene.restingShown() && springs.width.value() <= metrics.restWidth() + metrics.dp(5.0f)) {
+        if (scene.mode == Mode.HIDDEN && !scene.vanishing && metrics.holeD > 0.0f && springs.visibility.target() > 0.0f
+                && !scene.restingShown() && springs.width.value() <= metrics.restWidth() + metrics.dp(5.0f)
+                && (scene.iMode == null || !scene.iMode.holdsVisibility())) {
             springs.visibility.animateTo(0.0f, 0.12f, 1.0f);
             active = true;
         }
@@ -982,6 +1053,9 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         }
         if (waveItem != null) {
             need |= waveform.step(dt, waveItem, host.audio());
+        }
+        if (callWaveTarget() != null) {
+            need |= callWave.step(dt, host.callAudio());
         }
         // Microphone reads arrive at 25 Hz, independently of the display. Keep the
         // visible history moving between reads instead of painting only on input.
@@ -1146,6 +1220,11 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
     /** Draws a time string, rolling each digit that changed vertically (down for countdowns). */
     public void drawTime(Canvas c, String key, String text, Paint paint, float left, float baseline, boolean countDown) {
         clock.draw(c, key, text, paint, left, baseline, countDown);
+    }
+
+    /** Width {@link #drawTime} takes for {@code text}; use it to place numbers that are drawn rolling. */
+    public static float timeWidth(Paint paint, String text) {
+        return DigitClock.width(paint, text);
     }
 
     public void drawLeadingMono(Canvas c, IslandItem item, float left, float midY, float size, float alpha) {
@@ -1333,6 +1412,11 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
      */
     public static float blobFalloff(float r) {
         return Easing.blobFalloff(r);
+    }
+
+    /** Live audio levels for the media card's waveform, or null (shade renderer has no host). */
+    public dev.android.dynamicisland.island.feedback.AudioLevels audioLevels() {
+        return host == null ? null : host.audio();
     }
 
     public static float clamp01(float v) {

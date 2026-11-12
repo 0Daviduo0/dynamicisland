@@ -51,6 +51,8 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
     }
 
     /** Never re-run a deferred refresh sooner than one frame. */
+    /** Longest a ringing call keeps its card open (a call rarely rings longer). */
+    private static final long RINGING_OPEN_MS = 60_000;
     private static final long MIN_DEFERRED_REFRESH_MS = 16L;
 
     private static IslandController instance;
@@ -60,6 +62,7 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
     private final Handler main = new dev.android.dynamicisland.xposed.GuardedHandler(Looper.getMainLooper());
     private final AudioLevels audio = new AudioLevels();
     private final dev.android.dynamicisland.island.feedback.RecorderInput recordingInput;
+    private final dev.android.dynamicisland.island.feedback.CallAudio callAudio;
     private final Haptics haptics;
 
     private final IslandSources sources;
@@ -81,6 +84,10 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
             IslandView current = placementView();
             if (current != null) current.onRecordingAudioFrame();
         });
+        callAudio = new dev.android.dynamicisland.island.feedback.CallAudio(ctx, () -> main.post(() -> {
+            IslandView current = placementView();
+            if (current != null) current.onCallAudioFrame();
+        }));
         sources = new IslandSources(ctx, classLoader, main, this::requestRefresh);
         haptics = new Haptics(ctx);
         placement = new IslandPlacement(ctx, main, classLoader, this, this, audio);
@@ -225,6 +232,8 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
      * @return true when the island took it (the stock banner must stay away)
      */
     public boolean peekHeadsUp(StatusBarNotification sbn) {
+        // a ringing alarm opens on the island: the stock banner would cover it
+        if (sources.alarm.claims(sbn)) return true;
         return headsUp.take(sbn);
     }
 
@@ -241,6 +250,7 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
     /** Fed by the notification list hook: progress notifications become cards. */
     public void onNotificationsSnapshot(List<StatusBarNotification> all) {
         lastNotifications = new ArrayList<>(all);
+        dev.android.dynamicisland.island.source.MediaSource.noteNotifications(all);
         List<StatusBarNotification> allowed = new ArrayList<>(all.size());
         for (StatusBarNotification sbn : all) {
             if (sbn != null && ModuleSettings.appAllowed(sbn.getPackageName())) {
@@ -268,6 +278,9 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
             main.post(scan);
         }
         sources.calls.update(all);
+        sources.quickShare.updateNotifications(all);
+        sources.alarm.update(all);
+        sources.workout.update(allowed);
     }
 
     public void setOngoingActivityController(Object controller) {
@@ -299,20 +312,21 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
     }
 
     public void setDozing(boolean value) {
-        if (value) recordingInput.setTarget(null);
+        if (value) { recordingInput.setTarget(null); callAudio.setTarget(null); }
         placement.setDozing(value);
     }
 
     /** Early power transition, before keyguard/AOD can cover the exit animation. */
     public void setSleeping(boolean sleeping) {
         if (Looper.myLooper() != main.getLooper()) { main.post(() -> setSleeping(sleeping)); return; }
-        if (sleeping) recordingInput.setTarget(null);
+        if (sleeping) { recordingInput.setTarget(null); callAudio.setTarget(null); }
         placement.setSleeping(sleeping);
     }
 
     public void finishSleeping() {
         if (Looper.myLooper() != main.getLooper()) { main.post(this::finishSleeping); return; }
         recordingInput.setTarget(null);
+        callAudio.setTarget(null);
         placement.finishSleeping();
     }
 
@@ -352,6 +366,7 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
         placement.onFrame();
         IslandView view = placement.view();
         recordingInput.setTarget(view == null ? null : view.recordingInputTarget());
+        callAudio.setTarget(view == null ? null : view.callWaveTarget());
         int coverage = view == null ? 0 : view.shadeCardCoverageToken();
         if (coverage != shadeCardCoverage) {
             shadeCardCoverage = coverage;
@@ -487,6 +502,10 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
 
     private IslandView placementView() { return placement.view(); }
 
+    @Override public dev.android.dynamicisland.island.feedback.CallAudio callAudio() {
+        return callAudio;
+    }
+
     @Override public dev.android.dynamicisland.island.feedback.RecorderInput recordingAudio() {
         return recordingInput;
     }
@@ -531,6 +550,33 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
         lastItems = now;
     }
 
+    /** Key of the ringing call whose card the island opened, until that call stops ringing. */
+    private String ringingOpened;
+
+    /**
+     * A call that starts ringing opens straight into its card (caller, photo, answer / decline). Once it is
+     * answered or gone, the card the island opened folds back to the pill.
+     */
+    private void openRingingCall(IslandView view, java.util.List<IslandItem> shown) {
+        IslandItem ringing = null;
+        for (IslandItem item : shown) {
+            if ((item.kind == IslandItem.Kind.CALL || item.kind == IslandItem.Kind.ALARM) && item.callRinging) { ringing = item; break; }
+        }
+        if (ringing != null) {
+            if (!ringing.key.equals(ringingOpened) && view.canPeek() && view.peek(ringing, RINGING_OPEN_MS)) {
+                ringingOpened = ringing.key;
+            }
+            return;
+        }
+        if (ringingOpened != null) {
+            String key = ringingOpened;
+            ringingOpened = null;
+            for (IslandItem item : shown) {
+                if (item.key.equals(key) && view.isShowingCard(item)) { view.collapse(); break; }
+            }
+        }
+    }
+
     /** Rebuilds the item list from all sources and hands it to the view. A failure only skips this refresh. */
     private void refreshNow() {
         try {
@@ -551,6 +597,16 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
                 if (requested != null && !view.isExpanded() && view.canPeek()) {
                     long duration = sourcePeekRequests.duration(requested, now);
                     if (duration > 0 && view.peek(requested, duration)) sourcePeekRequests.opened(requested);
+                }
+            }
+            openRingingCall(view, shape.shown);
+            String quickShareOpen = sources.quickShare.takePendingOpen();
+            if (quickShareOpen != null && view.canPeek()) {
+                for (IslandItem item : shape.shown) {
+                    if (item.key.equals(quickShareOpen)) {
+                        view.peek(item, dev.android.dynamicisland.island.source.QuickShareSource.REQUEST_OPEN_MS);
+                        break;
+                    }
                 }
             }
             IslandItem nextCard = autoOpenCards.next(shape.shown, ModuleSettings.autoOpenCards(), now);

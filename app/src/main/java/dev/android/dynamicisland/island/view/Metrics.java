@@ -48,10 +48,10 @@ final class Metrics {
         bubbleGap = dp(6.0f);
         minPillW = dp(64.0f);
         ringSize = dp(17.0f);
-        waveBarW = dp(3.8f);
-        waveGap = dp(2.6f);
+        waveBarW = dp(2.6f);
+        waveGap = dp(2.2f);
         outlineW = Math.max(1.5f, dp(0.7f));
-        cardRadius = dp(28.0f);
+        cardRadius = dp(26.0f);
         cardGap = dp(8.0f);
         cardMargin = dp(12.0f);
         cardMaxW = dp(420.0f);

@@ -679,7 +679,7 @@
     <string name="perf_static_waveform">Durağan dalga biçimi</string>
     <string name="perf_static_waveform_desc">Dalga biçimi sabit kalır ve bunun için ses analiz edilmez.</string>
     <string name="perf_limit_frame_rate">Kare hızını sınırla</string>
-    <string name="perf_limit_frame_rate_desc">Ortam animasyonu en çok 30 fps, dokunma tepkisi en çok 60 fps.</string>
+    <string name="perf_limit_frame_rate_desc">Ortam animasyonu en çok 24 fps, dokunma tepkisi en çok 60 fps.</string>
     <string name="perf_still_icons">Durağan animasyonlu simgeler</string>
     <string name="perf_still_icons_desc">Animasyonlu simgeler son karelerini gösterir.</string>
     <string name="perf_covered">Yukarıdaki düşük performans modu bunların hepsini zaten uyguluyor.</string>

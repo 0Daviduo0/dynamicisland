@@ -116,7 +116,7 @@ public abstract class CardBody {
             owner.fillPaint.setColor(Colors.withAlpha(b.bg, alpha));
             c.drawRoundRect(owner.tmpRect, owner.tmpRect.height() / 2.0f, owner.tmpRect.height() / 2.0f, owner.fillPaint);
             if (b.label != null) {
-                drawLabel(c, b.label, owner.tmpRect, alpha);
+                drawLabel(c, b.label, owner.tmpRect, alpha, b.bg);
             }
             return;
         }
@@ -128,7 +128,7 @@ public abstract class CardBody {
         if (b.glyph != 0) {
             // a white fill gets a black glyph, anything else a white one
             owner.fillPaint.setColor(Colors.withAlpha(b.bg == Colors.WHITE ? Colors.BLACK : Colors.WHITE, alpha));
-            if (b.glyph == Glyphs.PLAY || b.glyph == Glyphs.PAUSE) {
+            if ((b.glyph == Glyphs.PLAY || b.glyph == Glyphs.PAUSE) && b.bg != Colors.TRANSPARENT_MARK) {
                 contentSize = owner.tmpRect.height() * 0.4f;
             }
             Glyphs.draw(c, b.glyph, owner.tmpRect.centerX(), owner.tmpRect.centerY(), contentSize, owner.fillPaint);
@@ -137,12 +137,14 @@ public abstract class CardBody {
         if (b.icon != null) {
             owner.drawDrawable(c, b.icon, false, Colors.WHITE, owner.tmpRect.centerX() - (contentSize / 2.0f), owner.tmpRect.centerY() - (contentSize / 2.0f), contentSize, alpha, 0.0f);
         } else if (b.label != null) {
-            drawLabel(c, b.label, owner.tmpRect, alpha);
+            drawLabel(c, b.label, owner.tmpRect, alpha, b.bg);
         }
     }
 
-    private void drawLabel(Canvas c, String label, RectF bounds, float alpha) {
-        owner.buttonPaint.setColor(Colors.withAlpha(Colors.WHITE, alpha));
+    private void drawLabel(Canvas c, String label, RectF bounds, float alpha, int bg) {
+        // a light, solid fill (white or a pale accent) gets black text so the label stays readable
+        boolean light = android.graphics.Color.alpha(bg) > 200 && android.graphics.Color.luminance(bg) > 0.5f;
+        owner.buttonPaint.setColor(Colors.withAlpha(light ? Colors.BLACK : Colors.WHITE, alpha));
         String text = TextUtils.ellipsize(label, owner.buttonPaint, bounds.width() - owner.dp(14.0f), TextUtils.TruncateAt.END).toString();
         Paint.FontMetrics fm = owner.buttonPaint.getFontMetrics();
         c.drawText(text, bounds.centerX(), bounds.centerY() - ((fm.ascent + fm.descent) / 2.0f), owner.buttonPaint);
@@ -165,7 +167,7 @@ public abstract class CardBody {
             Btn btn = new Btn();
             btn.r.set((i * (buttonWidth + gap)) + sidePad, top, (i * (buttonWidth + gap)) + sidePad + buttonWidth, top + rowHeight);
             btn.label = action.title != null ? action.title.toString() : null;
-            btn.bg = action.destructive ? Colors.DESTRUCTIVE_RED : item.customAccent != 0
+            btn.bg = action.destructive ? Colors.DESTRUCTIVE_RED : action.affirmative ? (item.accent != -1 ? item.accent : item.fillAccent()) : item.customAccent != 0
                     ? Colors.withAlpha(item.fillAccent(), android.graphics.Color.alpha(Colors.TRACK) / 255f) : Colors.TRACK;
             btn.action = action;
             buttons.add(btn);

@@ -56,6 +56,13 @@ public final class StatusBarIconFader {
     private final RectF island = new RectF();
     private final RectF iconBounds = new RectF();
     private final ViewTreeObserver.OnGlobalLayoutListener layoutListener = this::onStatusBarLayout;
+    /** Any status bar redraw may have moved an icon (translation, scale, visibility): re-check on the next update. */
+    private final ViewTreeObserver.OnPreDrawListener drawListener = () -> {
+        barChanged = true;
+        return true;
+    };
+    /** The status bar drew since the last {@link #apply()}; while false and the island is still, nothing can change. */
+    private boolean barChanged = true;
 
     private View statusBar;
     /** View whose layout passes drive the fader: the bar's contents container if there is one. */
@@ -85,13 +92,16 @@ public final class StatusBarIconFader {
         View contents = find(phoneStatusBarView, "status_bar_contents");
         watched = contents != null ? contents : phoneStatusBarView;
         watched.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener);
+        watched.getViewTreeObserver().addOnPreDrawListener(drawListener);
         dirty = true;
+        barChanged = true;
     }
 
     public void detach() {
         if (watched != null) {
             try {
                 watched.getViewTreeObserver().removeOnGlobalLayoutListener(layoutListener);
+                watched.getViewTreeObserver().removeOnPreDrawListener(drawListener);
             } catch (Throwable ignored) {
                 // observer already dead
             }
@@ -110,6 +120,10 @@ public final class StatusBarIconFader {
      */
     public void update(RectF coverage, boolean active) {
         if (!active && !islandActive && !dirty) {
+            return;
+        }
+        // called every island frame: skip while neither the island area nor the status bar changed
+        if (!dirty && !barChanged && active == islandActive && (!active || island.equals(coverage))) {
             return;
         }
         islandActive = active;
@@ -152,6 +166,7 @@ public final class StatusBarIconFader {
             if (statusBar == null) {
                 return;
             }
+            barChanged = false;
             if (dirty) {
                 collect();
             }

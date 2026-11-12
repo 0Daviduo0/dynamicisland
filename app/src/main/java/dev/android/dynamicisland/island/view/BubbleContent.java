@@ -30,6 +30,12 @@ public final class BubbleContent extends Content {
         } else {
             iconSize = bubble.width() * ICON_RATIO;
         }
+        if (item.trailing == IslandItem.Trailing.ICON && item.trailingIcon != null) {
+            // a status shown as a glyph pair (headphones + noise mode): the bubble only has room for the status glyph
+            owner.drawDrawable(c, item.trailingIcon, false, item.symbolTint(), bubble.centerX() - iconSize / 2.0f,
+                    bubble.centerY() - iconSize / 2.0f, iconSize, alpha, 0);
+            return;
+        }
         owner.drawLeadingMono(c, item, bubble.centerX() - (iconSize / 2.0f), bubble.centerY(), iconSize, alpha);
     }
 }

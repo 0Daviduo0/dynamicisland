@@ -134,7 +134,7 @@ public final class UnlockSource {
         item.trailingText = IslandText.get(ctx, labelKey(method));
         item.icon = GlyphIcon.of(method == Method.FACE ? GlyphIcon.Kind.FACE
                 : method == Method.FINGERPRINT ? GlyphIcon.Kind.FINGERPRINT : GlyphIcon.Kind.PIN);
-        item.accent = 0xFF30D158;
+        item.accent = 0xFF3DB653;
         long now = SystemClock.uptimeMillis();
         item.postTime = now;
         item.expiresAtUptime = now + REVEAL_SLACK_MS + SHOW_MS;

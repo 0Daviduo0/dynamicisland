@@ -162,7 +162,7 @@ final class StackPainter {
         // turn transparent in one jump
         float glassIn = Easing.easeInOut(clamp01((opening - GLASS_FROM) / (1.0f - GLASS_FROM)));
         // the see-through part only counts as far as the real blur is there behind it
-        return Colors.withAlpha(fill, lerp(1.0f, glass ? 0.46f : 0.9f, glassIn * (glass ? blurFraction : 1.0f)));
+        return Colors.withAlpha(fill, lerp(1.0f, glass ? 0.62f : 0.94f, glassIn * (glass ? blurFraction : 1.0f)));
     }
 
     /** Blur callback: paints a card into its blur slot, whose canvas origin is the slot, not the view. */

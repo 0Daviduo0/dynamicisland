@@ -59,7 +59,7 @@ public class LottieGoldenTest {
     }
 
     private static final Map<String, String> EXPECTED = new LinkedHashMap<>();
-    static { EXPECTED.put("battery", "0dfc8af0df1d286027a1b62338dab8c31b6e2354014b5b16eb4f603fe7107a8f"); }
+    static { EXPECTED.put("battery", "1669f102b549f2fb082846b3bf9b47bc19b7d73b3e1b8b025eaa1e638eff6436"); }
     static { EXPECTED.put("battery_charging", "01d813e9eebfc1c1e210fab4b77e279774edaf80d3d566d24beff29a933878ce"); }
     static { EXPECTED.put("power_save", "880341aeaebf69a7e27fcde69d5a93fdb66657bff8fa6fd06cb3b5e8419341b3"); }
     static { EXPECTED.put("bell", "55671e91d20bb9e330dc8b0c3c3f6113cec599ffb3e712beceb745bb54134c02"); }

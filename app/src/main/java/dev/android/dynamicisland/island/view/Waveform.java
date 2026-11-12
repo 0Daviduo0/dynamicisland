@@ -14,24 +14,28 @@ import java.util.Random;
 import dev.android.dynamicisland.settings.ModuleSettings;
 
 /**
- * The little equaliser at the right of the pill while music plays. With live audio the bars follow the
- * frequency bands; without it they wander randomly, and they settle low when paused.
+ * Small now-playing waveform at the right of the pill: six thin capsules in a single colour taken from the
+ * artwork, taller in the middle and shorter at the edges. With live audio each bar follows a frequency band;
+ * without it the bars drift smoothly. When paused they shrink to small dots.
  */
 final class Waveform {
-    static final int BARS = 4;
-    private static final float[] STATIC_LEVELS = {.3f, .65f, .45f, .25f};
-    /** Audio band that drives each bar, left to right. */
-    private static final int[] BAND_ORDER = {2, 0, 1, 3};
-    private static final float MAX_HEIGHT_DP = 18.0f;
-    private static final float MIN_HEIGHT_DP = 4.0f;
-    /** Time constant in seconds with which the smoothed levels follow the raw ones. */
-    private static final float LEVEL_SMOOTHING_S = 0.09f;
+    static final int BARS = 6;
+    /** Height envelope: the middle bars reach higher than the outer ones. */
+    private static final float[] ENVELOPE = {.52f, .82f, 1f, .94f, .76f, .5f};
+    private static final float[] STATIC_LEVELS = {.35f, .7f, .55f, .9f, .45f, .3f};
+    /** Audio band driving each bar, left to right (low frequencies in the middle). */
+    private static final int[] BAND_ORDER = {3, 1, 0, 0, 2, 4};
+    private static final float MAX_HEIGHT_DP = 16.0f;
+    /** Paused height: equal to the bar width, so each bar becomes a dot. */
+    private static final float MIN_HEIGHT_FACTOR = 1.0f;
+    /** Time constant in seconds smoothed levels follow raw ones. */
+    private static final float LEVEL_SMOOTHING_S = 0.07f;
 
     private final Metrics m;
     private final Spring[] bars = new Spring[BARS];
     private final float[] level = new float[BARS];
     private final Random random = new Random();
-    /** Flat non-media waveforms must not inherit a media shader or mutate the shared fill paint. */
+    /** Waveforms never mutate the shared fill paint. */
     private final Paint flatPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     Waveform(Metrics m) {
@@ -60,12 +64,10 @@ final class Waveform {
             if (live) {
                 followAudio(i, bar, audio, k);
             } else if (!item.playing) {
-                bar.animateTo(IslandView.PAUSED_SPEED, 0.3f, 0.95f);
-            } else if (bar.isAtRest() || Math.abs(bar.value() - bar.target()) < 0.05f) {
-                bar.animateTo((random.nextFloat() * 0.45f) + 0.2f, (random.nextFloat() * 0.14f) + 0.32f, 0.95f);
-            }
-            if (!live) {
-                level[i] += (bar.value() - level[i]) * k;
+                bar.animateTo(0.0f, 0.35f, 1.0f);
+            } else if (bar.isAtRest() || Math.abs(bar.value() - bar.target()) < 0.04f) {
+                // smooth, unhurried drift with no overshoot
+                bar.animateTo((random.nextFloat() * 0.7f) + 0.25f, (random.nextFloat() * 0.18f) + 0.26f, 1.0f);
             }
             moving |= bar.step(dt);
         }
@@ -73,37 +75,37 @@ final class Waveform {
     }
 
     private void followAudio(int index, Spring bar, AudioLevels audio, float k) {
-        float raw = audio.level(BAND_ORDER[index]);
-        if (index == BARS - 1) {
-            raw = Math.max(raw, audio.level(AudioLevels.BANDS - 1)); // the last bar also follows the top band
-        }
+        float raw = audio.level(Math.min(BAND_ORDER[index], AudioLevels.BANDS - 1));
         level[index] += (raw - level[index]) * k;
-        float target = (level[index] * 0.9f) + 0.1f;
+        float target = (level[index] * 0.85f) + 0.15f;
         if (target > bar.value()) {
-            bar.animateTo(target, 0.13f, 0.85f); // rises fast
+            bar.animateTo(target, 0.11f, 0.9f);
         } else {
-            bar.animateTo(target, 0.3f, 1.0f);
+            bar.animateTo(target, 0.26f, 1.0f);
         }
     }
 
     void draw(Canvas c, RectF scratch, float left, float midY, int color, float alpha) {
-        flatPaint.setColor(Colors.withAlpha(color, alpha));
+        flatPaint.setShader(null);
+        flatPaint.setColor(Colors.withAlpha(Colors.readableOnBlack(color), alpha));
         drawBars(c, flatPaint, scratch, left, midY);
     }
 
+    /** Music: one flat colour from the middle of the artwork palette, lifted so it reads on the black pill. */
     void draw(Canvas c, RectF scratch, float left, float midY, MediaFx fx, float alpha, long now) {
-        drawBars(c, fx.waveformPaint(left, width(), alpha, now), scratch, left, midY);
+        draw(c, scratch, left, midY, fx.waveformColorAt(0.5f, now), alpha);
     }
 
     private void drawBars(Canvas c, Paint paint, RectF scratch, float left, float midY) {
         float maxH = m.dp(MAX_HEIGHT_DP);
-        float minH = m.dp(MIN_HEIGHT_DP);
+        float minH = m.waveBarW * MIN_HEIGHT_FACTOR;
+        float radius = m.waveBarW / 2.0f;
         float x = left;
         for (int i = 0; i < BARS; i++) {
             float value = ModuleSettings.staticWaveform() ? STATIC_LEVELS[i] : bars[i].value();
-            float h = ((maxH - minH) * clamp01(value)) + minH;
+            float h = minH + ((maxH - minH) * ENVELOPE[i] * clamp01(value));
             scratch.set(x, midY - (h / 2.0f), m.waveBarW + x, midY + (h / 2.0f));
-            c.drawRoundRect(scratch, m.waveBarW / 2.0f, m.waveBarW / 2.0f, paint);
+            c.drawRoundRect(scratch, radius, radius, paint);
             x += m.waveBarW + m.waveGap;
         }
     }

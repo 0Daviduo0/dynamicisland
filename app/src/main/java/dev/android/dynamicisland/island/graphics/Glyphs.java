@@ -19,8 +19,8 @@ public final class Glyphs {
     public static final int PREV = 3;
     public static final int NEXT = 4;
     static final int BOLT = 5;
-    static final int STOP = 6;
-    static final int MIC = 7;
+    public static final int STOP = 6;
+    public static final int MIC = 7;
     static final int MIC_OFF = 8;
     public static final int HANGUP = 9;
     public static final int SPEAKER = 10;
@@ -28,6 +28,7 @@ public final class Glyphs {
     public static final int CHECK = 12;
     public static final int POWER = 13;
     public static final int ANSWER = 14;
+    public static final int CLOSE = 15;
 
     private static final Path PATH = new Path();
     private static final RectF R = new RectF();
@@ -91,11 +92,24 @@ public final class Glyphs {
             case ANSWER:
                 answer(canvas, cx, cy, size, paint);
                 break;
+            case CLOSE:
+                close(canvas, cx, cy, size, paint);
+                break;
             default:
                 break;
         }
         paint.setStyle(Paint.Style.FILL);
         paint.setStrokeWidth(0.0f);
+    }
+
+    /** A cross: two rounded diagonal strokes. */
+    private static void close(Canvas canvas, float cx, float cy, float size, Paint paint) {
+        float h = 0.36f * size;
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(0.13f * size);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        canvas.drawLine(cx - h, cy - h, cx + h, cy + h, paint);
+        canvas.drawLine(cx - h, cy + h, cx + h, cy - h, paint);
     }
 
     /** The power symbol: an open ring with a bar through its top gap. */

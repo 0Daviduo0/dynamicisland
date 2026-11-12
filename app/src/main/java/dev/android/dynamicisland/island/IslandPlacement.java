@@ -87,6 +87,10 @@ final class IslandPlacement {
     private Set<String> exitPackages = new LinkedHashSet<>();
     private final RectF scratch = new RectF();
     private final int[] screenPos = new int[2];
+    private int contentsId = -1;
+    private int barHeightId = -1;
+    private View contentsView;
+    private View contentsOwner;
 
     private final Runnable revealTimer = this::onRevealDelayElapsed;
     private final View.OnLayoutChangeListener statusBarLayoutListener;
@@ -389,15 +393,25 @@ final class IslandPlacement {
     /** Vertical centre of the status bar contents (where the camera hole is), in screen pixels. */
     private float statusBarCenterY() {
         if (statusBarView != null) {
-            int id = statusBarView.getResources().getIdentifier("status_bar_contents", "id", "com.android.systemui");
-            View contents = id == 0 ? null : statusBarView.findViewById(id);
+            // runs every animation frame: name lookups are slow (string-pool scans), so resolve once
+            if (contentsId == -1) {
+                contentsId = statusBarView.getResources().getIdentifier("status_bar_contents", "id", "com.android.systemui");
+            }
+            View contents = contentsView;
+            if (contents == null || contentsOwner != statusBarView || !contents.isAttachedToWindow()) {
+                contents = contentsId == 0 ? null : statusBarView.findViewById(contentsId);
+                contentsView = contents;
+                contentsOwner = statusBarView;
+            }
             if (contents != null && contents.getHeight() > 0 && contents.isAttachedToWindow()) {
                 contents.getLocationOnScreen(screenPos);
                 return screenPos[1] + contents.getHeight() / 2.0f;
             }
         }
-        int resId = ctx.getResources().getIdentifier("status_bar_height", "dimen", "android");
-        float barHeight = resId != 0 ? ctx.getResources().getDimension(resId) : FALLBACK_STATUS_BAR_HEIGHT_DP * density;
+        if (barHeightId == -1) {
+            barHeightId = ctx.getResources().getIdentifier("status_bar_height", "dimen", "android");
+        }
+        float barHeight = barHeightId != 0 ? ctx.getResources().getDimension(barHeightId) : FALLBACK_STATUS_BAR_HEIGHT_DP * density;
         return STATUS_BAR_CENTER_RATIO * barHeight;
     }
 

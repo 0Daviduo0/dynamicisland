@@ -502,7 +502,7 @@ public final class RuleSource {
             case "navigation":
                 return 0xFF0A84FF;
             case "external_device":
-                return 0xFF30D158;
+                return 0xFF3DB653;
             case "vpn":
                 return 0xFFBF5AF2;
             case "parcel":

@@ -19,6 +19,9 @@ import dev.android.dynamicisland.settings.ModuleSettings;
  * waveform, progress rings and the segmented progress bar.
  */
 final class IconPainter {
+    private final android.graphics.Paint.FontMetrics fm = new android.graphics.Paint.FontMetrics();
+    /** "key#compact" per item, so the running clock does not build a new string every frame. */
+    private final java.util.HashMap<String, String> compactKeys = new java.util.HashMap<>();
     private static final ColorMatrixColorFilter GRAYSCALE = grayscale();
 
     private final Metrics m;
@@ -50,6 +53,16 @@ final class IconPainter {
         return new ColorMatrixColorFilter(matrix);
     }
 
+    private String compactKey(String key) {
+        String cached = compactKeys.get(key);
+        if (cached == null) {
+            if (compactKeys.size() > 32) compactKeys.clear();
+            cached = key + "#compact";
+            compactKeys.put(key, cached);
+        }
+        return cached;
+    }
+
     /** Leading icon of the compact pill: monochrome unless the icon is artwork. */
     void drawLeadingMono(Canvas c, IslandItem item, float left, float midY, float size, float alpha) {
         if (item.eventLayout == IslandItem.EventLayout.BATTERY && item.batteryPercent >= 0) {
@@ -70,9 +83,12 @@ final class IconPainter {
             // a picture the app gave as a symbol (a team logo): tinting it would leave a flat white shape
             drawDrawable(c, item.icon, true, 0, left, top, size, alpha, size * 0.26f);
         } else if (!item.iconIsImage) {
-            drawDrawable(c, item.icon, false, item.kind == IslandItem.Kind.CALL ? item.accent : -1, left, top, size, alpha, 0.0f);
+            drawDrawable(c, item.icon, false, item.kind == IslandItem.Kind.CALL ? item.accent : item.symbolTint(), left, top, size, alpha, 0.0f);
         } else if (!item.isMedia) {
-            if (ModuleSettings.colorIcons()) {
+            if (item.kind == IslandItem.Kind.CALL && item.cardImageRound && item.icon == item.cardImage) {
+                // a caller's photo: round and in colour, like the call screen
+                drawDrawable(c, item.icon, true, 0, left, top, size, alpha, size / 2f);
+            } else if (ModuleSettings.colorIcons()) {
                 drawDrawable(c, item.icon, true, 0, left, top, size, alpha, size * 0.26f);
             } else {
                 item.icon.setColorFilter(GRAYSCALE);
@@ -95,10 +111,10 @@ final class IconPainter {
             fill.setColor(Colors.withAlpha(Colors.DESTRUCTIVE_RED, alpha * breathe));
             c.drawCircle((size / 2.0f) + left, midY, 0.32f * size, fill);
         } else if (item.icon == null) {
-            fill.setColor(Colors.withAlpha(item.accent, alpha));
+            fill.setColor(Colors.withAlpha(item.symbolTint(), alpha));
             c.drawCircle((size / 2.0f) + left, midY, 0.3f * size, fill);
         } else {
-            drawDrawable(c, item.icon, item.iconIsImage, item.accent, left, midY - (size / 2.0f), size, alpha, size * 0.26f);
+            drawDrawable(c, item.icon, item.iconIsImage, item.symbolTint(), left, midY - (size / 2.0f), size, alpha, size * 0.26f);
         }
     }
 
@@ -174,6 +190,8 @@ final class IconPainter {
                 return m.ringSize;
             case WAVEFORM:
                 return waveform.width();
+            case ICON:
+                return item.trailingIcon == null ? 0.0f : m.leadSize;
             default:
                 return 0.0f;
         }
@@ -184,14 +202,14 @@ final class IconPainter {
             case TEXT:
             case CHRONOMETER:
                 if (text != null) {
-                    Paint.FontMetrics fm = paints.trail.getFontMetrics();
+                    paints.trail.getFontMetrics(fm);
                     paints.trail.setColor(Colors.withAlpha(item.voiceRecording && ModuleSettings.concurrentRecordingInput()
                             ? 0xFFFF5B62 : item.kind == IslandItem.Kind.CALL ? item.accent : -1, alpha));
                     float baseline = midY - ((fm.ascent + fm.descent) / 2.0f);
                     float natural = DigitClock.width(paints.trail, text);
                     int save = c.save();
-                    if (DigitClock.isClock(text) && w > 0 && natural > w) c.scale(w / natural, w / natural, right, midY);
-                    clock.draw(c, item.key + "#compact", text, paints.trail, right - natural, baseline, item.chronoCountDown);
+                    if (DigitClock.isRollable(text) && w > 0 && natural > w) c.scale(w / natural, w / natural, right, midY);
+                    clock.draw(c, compactKey(item.key), text, paints.trail, right - natural, baseline, item.chronoCountDown);
                     c.restoreToCount(save);
                 }
                 break;
@@ -203,6 +221,12 @@ final class IconPainter {
                     waveform.draw(c, scratch, right - w, midY, mediaFx.obtain(item), alpha, IslandView.now());
                 } else {
                     waveform.draw(c, scratch, right - w, midY, item.accent, alpha);
+                }
+                break;
+            case ICON:
+                if (item.trailingIcon != null && w > 0) {
+                    float size = Math.min(w, m.leadSize);
+                    drawDrawable(c, item.trailingIcon, false, item.symbolTint(), right - size, midY - size / 2.0f, size, alpha, 0);
                 }
                 break;
             default:

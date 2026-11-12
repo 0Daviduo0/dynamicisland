@@ -45,9 +45,9 @@ final class Paints {
         trail.setFontFeatureSettings("tnum");
         small.setTextSize(sp(12.0f));
         small.setFontFeatureSettings("tnum");
-        title.setTextSize(sp(18.0f));
+        title.setTextSize(sp(17.0f));
         title.setColor(Colors.WHITE);
-        body.setTextSize(sp(14.5f));
+        body.setTextSize(sp(14.0f));
         body.setColor(Colors.TEXT_BODY);
         bigTime.setTextSize(sp(30.0f));
         bigTime.setFontFeatureSettings("tnum");
@@ -68,7 +68,7 @@ final class Paints {
         if (mediaTitle == null) {
             mediaTitle = text();
             mediaTitle.setTypeface(Fonts.of(600));
-            mediaTitle.setTextSize(sp(17.0f));
+            mediaTitle.setTextSize(sp(16.0f));
         }
         return mediaTitle;
     }
@@ -77,7 +77,7 @@ final class Paints {
         if (mediaArtist == null) {
             mediaArtist = text();
             mediaArtist.setTypeface(Fonts.of(400));
-            mediaArtist.setTextSize(sp(14.5f));
+            mediaArtist.setTextSize(sp(14.0f));
         }
         return mediaArtist;
     }
@@ -103,7 +103,7 @@ final class Paints {
         Typeface medium = Fonts.of(500);
         trail.setTypeface(semibold);
         small.setTypeface(medium);
-        title.setTypeface(Fonts.of(700));
+        title.setTypeface(semibold);
         body.setTypeface(regular);
         bigTime.setTypeface(semibold);
         button.setTypeface(medium);

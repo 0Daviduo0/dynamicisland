@@ -35,6 +35,10 @@ final class CardBridge {
     private final RectF bounds = new RectF();
     /** Colour the bridge blends into at the card end, from the last {@link #update}. */
     private int cardColor;
+    /** Unit black→card gradient, rebuilt only when the card colour changes; placed with a local matrix per frame. */
+    private LinearGradient threadShader;
+    private int threadColor;
+    private final android.graphics.Matrix threadMatrix = new android.graphics.Matrix();
 
     CardBridge(IslandView view, Metrics m, Paints paints, Scene scene, Shapes shapes, StackPainter stack) {
         this.view = view;
@@ -89,7 +93,14 @@ final class CardBridge {
     void draw(Canvas canvas, LiquidBridge bridge) {
         if (bridge.hasBridge) {
             bridge.bridge.computeBounds(bounds, false);
-            paints.shape.setShader(new LinearGradient(0.0f, bounds.top, 0.0f, bounds.bottom, Colors.BLACK, cardColor, Shader.TileMode.CLAMP));
+            if (threadShader == null || threadColor != cardColor) {
+                threadColor = cardColor;
+                threadShader = new LinearGradient(0.0f, 0.0f, 0.0f, 1.0f, Colors.BLACK, cardColor, Shader.TileMode.CLAMP);
+            }
+            threadMatrix.setScale(1.0f, Math.max(1.0f, bounds.height()));
+            threadMatrix.postTranslate(0.0f, bounds.top);
+            threadShader.setLocalMatrix(threadMatrix);
+            paints.shape.setShader(threadShader);
             canvas.drawPath(bridge.bridge, paints.shape);
             paints.shape.setShader(null);
         }

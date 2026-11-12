@@ -55,6 +55,7 @@ final class IslandSources {
     final MediaSource media;
     final CastSource cast;
     final EventSource events;
+    final dev.android.dynamicisland.island.source.BudsSource buds;
     final ChargingSource charging;
     final HeadsetSource headset;
     final HotspotSource hotspot;
@@ -67,6 +68,12 @@ final class IslandSources {
     final RuleSource rules;
     final CallSource calls;
     final PeekSource peeks;
+    final dev.android.dynamicisland.island.source.QuickShareSource quickShare;
+    final dev.android.dynamicisland.island.source.AlarmSource alarm;
+    final dev.android.dynamicisland.island.source.CalendarSource calendar;
+    final dev.android.dynamicisland.island.source.WatchSource watch;
+    final dev.android.dynamicisland.island.source.CarSource car;
+    final dev.android.dynamicisland.island.source.WorkoutSource workout;
 
     IslandSources(Context ctx, ClassLoader classLoader, Handler main, Runnable onChange) {
         this.ctx = ctx;
@@ -79,6 +86,8 @@ final class IslandSources {
         media.setRecordingFilter(oa::isVoiceRecording);
         cast = new CastSource(ctx);
         events = new EventSource(ctx, main, onChange);
+        buds = new dev.android.dynamicisland.island.source.BudsSource(ctx, main, onChange);
+        events.onAudioConnected = buds::onAudioConnected;
         charging = new ChargingSource(ctx, main, onChange);
         headset = new HeadsetSource(ctx, main, onChange);
         hotspot = new HotspotSource(ctx, main, onChange);
@@ -98,6 +107,12 @@ final class IslandSources {
         torch.onShownChanged = () -> main.post(HideDuplicated::rebuild);
         calls = new CallSource(ctx, main, onChange, callClock);
         peeks = new PeekSource(ctx, main, onChange);
+        quickShare = new dev.android.dynamicisland.island.source.QuickShareSource(ctx, main, onChange);
+        alarm = new dev.android.dynamicisland.island.source.AlarmSource(ctx, main, onChange);
+        calendar = new dev.android.dynamicisland.island.source.CalendarSource(ctx, main, onChange);
+        watch = new dev.android.dynamicisland.island.source.WatchSource(ctx, main, onChange);
+        car = new dev.android.dynamicisland.island.source.CarSource(ctx, main, onChange);
+        workout = new dev.android.dynamicisland.island.source.WorkoutSource(ctx, main, onChange);
     }
 
     /** Starts the sources that listen on their own; the event and privacy islands may fail without harm. */
@@ -106,11 +121,16 @@ final class IslandSources {
         syncOptionalSources();
         try {
             events.start();
+            buds.start();
             torch.start();
             privacy.start();
+            quickShare.start();
         } catch (Throwable t) {
             XLog.e("event islands failed to start", t);
         }
+        guarded("watch start", watch::start);
+        guarded("car start", car::start);
+        guarded("calendar start", calendar::start);
         oa.onChanged = onChange;
     }
 
@@ -118,6 +138,7 @@ final class IslandSources {
         guarded("charging settings", charging::syncSettings);
         guarded("headset settings", headset::syncSettings);
         guarded("hotspot settings", hotspot::syncSettings);
+        guarded("calendar settings", calendar::syncSettings);
     }
 
     /** Cheap vendor-cache query for ordinary banner scans; gather resolves the actual task once per pass. */
@@ -143,6 +164,19 @@ final class IslandSources {
         guarded("cast", () -> cast.collect(items));
         guarded("recorder notification", () -> recorder.collect(items));
         guarded("events", () -> events.collect(items));
+        guarded("buds", () -> {
+            buds.collect(items);
+            // the Buds card replaces the generic Bluetooth "connected" card (classic and LE links alike)
+            // ...and while it is on its way, so connecting shows one island rather than several in a row
+            if (buds.showingConnect()) items.removeIf(item -> item.key.startsWith("event:bt:"));
+            else items.removeIf(item -> item.key.startsWith("event:bt:") && buds.awaiting(item.key.substring("event:bt:".length())));
+        });
+        guarded("watch", () -> watch.collect(items));
+        guarded("car", () -> {
+            car.collect(items);
+            // the car card replaces the plain Bluetooth "connected" card of the car kit
+            items.removeIf(item -> item.key.startsWith("event:bt:") && car.covers(item.key.substring("event:bt:".length())));
+        });
         guarded("charging info", () -> charging.collect(items));
         guarded("headset", () -> headset.collect(items));
         guarded("hotspot", () -> hotspot.collect(items));
@@ -159,6 +193,18 @@ final class IslandSources {
         guarded("progress", () -> progress.collect(items, foreground));
         guarded("rules", () -> rules.collect(items, foreground));
         guarded("calls", () -> calls.collect(items, foreground));
+        guarded("quick share", () -> quickShare.collect(items));
+        guarded("alarm", () -> {
+            alarm.collect(items);
+        });
+        guarded("calendar", () -> calendar.collect(items));
+        guarded("workout", () -> {
+            String shown = workout.shownKey();
+            // the workout card replaces whatever plain card the same Samsung Health notification made
+            if (shown != null) items.removeIf(item -> shown.equals(item.sourceKey)
+                    || dev.android.dynamicisland.island.source.WorkoutSource.HEALTH_PKG.equals(item.packageName));
+            workout.collect(items);
+        });
         guarded("peeks", () -> peeks.collect(items));
         if (torch.replacesStockNotification()) {
             // System UI's own "flashlight in use" notification would show next to the brightness card

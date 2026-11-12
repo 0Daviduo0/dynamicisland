@@ -60,6 +60,7 @@ public final class ModuleSettings {
     /** Keeps an empty pill around the camera while nothing is happening (default off). */
     public static final String KEY_ALWAYS_VISIBLE = "always_visible_island";
     public static final String KEY_NOTCH_STYLE = "notch_style";
+    /** Where the island lives: around the camera (dynamic island) or in a band under the apps (dynamic inset). */
     /** The charging details card is shown as lines of text instead of the battery gauge (default off). */
     public static final String KEY_CHARGING_TEXT = "charging_text_lines";
     /** A swipe up on the small pill hides it (iMotion). On by default; off keeps the pill where it is. */
@@ -160,6 +161,14 @@ public final class ModuleSettings {
     public static final String KEY_OTP_CARD = "otp_card";
     public static final String KEY_OTP_AUTO_COPY = "otp_auto_copy";
     public static final String KEY_THIRD_PARTY_CALLS = "third_party_calls";
+    public static final String KEY_CALL_WAVEFORM = "call_waveform";
+    public static final String KEY_CALL_SHOW_TIME = "call_show_time";
+    public static final String KEY_ALARM_CARD = "alarm_card";
+    public static final String KEY_WATCH_CARD = "watch_card";
+    public static final String KEY_CALENDAR_CARD = "calendar_card";
+    public static final String KEY_CAR_CARD = "car_card";
+    public static final String KEY_WORKOUT_CARD = "workout_card";
+    public static final String KEY_QUICK_SHARE = "quick_share_island";
     /** true = only the listed apps are shown, false (default) = every app except the listed ones. */
     public static final String KEY_APPS_ONLY_LISTED = "apps_only_listed";
     /** Package names of the listed apps. */
@@ -181,7 +190,7 @@ public final class ModuleSettings {
     private static volatile boolean cardHeader = true;
     private static volatile boolean visualizer = true;
     private static volatile boolean colorIcons;
-    private static volatile boolean shadeMedia = true;
+    private static volatile boolean shadeMedia = false;
     private static volatile boolean eventCharging = true;
     private static volatile boolean stockChargingAnimation;
     private static volatile boolean concurrentRecordingInput;
@@ -264,10 +273,20 @@ public final class ModuleSettings {
     private static volatile boolean otpCard = true;
     private static volatile boolean otpAutoCopy = false;
     private static volatile boolean thirdPartyCalls = true;
+    private static volatile boolean callWaveform = true;
+    private static volatile boolean callShowTime;
+    private static volatile boolean alarmCard = true;
+    private static volatile boolean watchCard = true;
+    private static volatile boolean calendarCard = true;
+    private static volatile boolean carCard = true;
+    private static volatile boolean workoutCard = true;
+    private static volatile boolean quickShare = true;
     private static volatile AppFilter appFilter = AppFilter.OFF;
 
-    private static boolean started;
-    private static boolean previewProcess;
+    private static volatile boolean started;
+    /** Guarded by the class lock: the first refresh is under way. */
+    private static boolean starting;
+    private static volatile boolean previewProcess;
     private static XSharedPreferences prefs;
     private static boolean loaded;
     /** True while the values come from {@link SettingsProvider} because the preference file was empty or unreadable. */
@@ -422,12 +441,21 @@ public final class ModuleSettings {
     }
 
     /** Starts the background reload loop on first use; later calls do nothing. */
-    public static synchronized void ensureStarted() {
+    public static void ensureStarted() {
+        // every getter calls this, many times per animation frame: no lock once started
         if (started || previewProcess) {
             return;
         }
-        started = true;
+        startOnce();
+    }
+
+    private static synchronized void startOnce() {
+        if (started || starting || previewProcess) {
+            return; // done, or a getter inside the first refresh below (same thread, monitor re-entered)
+        }
+        starting = true;
         refresh(); // the first values are in place before the first getter returns
+        started = true; // only now may other threads skip the lock
         try {
             HandlerThread thread = new HandlerThread("DynamicIslandPrefs", Process.THREAD_PRIORITY_BACKGROUND);
             thread.start();
@@ -529,7 +557,7 @@ public final class ModuleSettings {
             cardHeader = source.getBoolean(KEY_CARD_HEADER, true);
             visualizer = source.getBoolean(KEY_VISUALIZER, true);
             colorIcons = source.getBoolean(KEY_COLOR_ICONS, false);
-            shadeMedia = source.getBoolean(KEY_SHADE_MEDIA, true);
+            shadeMedia = source.getBoolean(KEY_SHADE_MEDIA, false);
             eventCharging = source.getBoolean(KEY_EVENT_CHARGING, true);
             readOptionalDeviceSettings(source);
             eventRinger = source.getBoolean(KEY_EVENT_RINGER, true);
@@ -611,6 +639,14 @@ public final class ModuleSettings {
             otpCard = source.getBoolean(KEY_OTP_CARD, true);
             otpAutoCopy = source.getBoolean(KEY_OTP_AUTO_COPY, false);
             thirdPartyCalls = source.getBoolean(KEY_THIRD_PARTY_CALLS, true);
+            callWaveform = source.getBoolean(KEY_CALL_WAVEFORM, true);
+            callShowTime = source.getBoolean(KEY_CALL_SHOW_TIME, false);
+            alarmCard = source.getBoolean(KEY_ALARM_CARD, true);
+            watchCard = source.getBoolean(KEY_WATCH_CARD, true);
+            calendarCard = source.getBoolean(KEY_CALENDAR_CARD, true);
+            carCard = source.getBoolean(KEY_CAR_CARD, true);
+            workoutCard = source.getBoolean(KEY_WORKOUT_CARD, true);
+            quickShare = source.getBoolean(KEY_QUICK_SHARE, true);
             Set<String> listed = source.getStringSet(KEY_APPS_LISTED, null);
             appFilter = new AppFilter(source.getBoolean(KEY_APPS_ONLY_LISTED, false),
                     listed == null ? null : new java.util.HashSet<>(listed));
@@ -785,7 +821,7 @@ public final class ModuleSettings {
 
     private static String switchSignature() {
         return "" + ambientGlow + glowAlbum + glowFollowTheme + glowStrength + "/motion=" + glowMotion + "/musicOnly=" + glowMusicOnly + "/" + glowColour + lowPerformance + "/light=" + stillMusic + staticWaveform + limitFrameRate + stillIcons + foregroundNotifications + autoOpenCards + autoOpenS + experimentalRecovery + compactEventIcons + hideBatteryIcon + accentCustom + accentColor + "/system=" + accentSystem + systemAccent + eventCharging + eventRinger + eventBluetooth + eventToggles + torchPill + "/torchStyle=" + torchStyle + headsUpIsland + allNotifications + progressNotifications + hideProgressOriginals
-                + smartRules + privacyIndicator + privacyLocation + otpCard + otpAutoCopy + thirdPartyCalls + visualizer + colorIcons + shadeMedia + cardHeader
+                + smartRules + privacyIndicator + privacyLocation + otpCard + otpAutoCopy + thirdPartyCalls + callWaveform + "/callTime=" + callShowTime + "/now=" + alarmCard + watchCard + calendarCard + carCard + workoutCard + quickShare + visualizer + colorIcons + shadeMedia + cardHeader
                 + "/devices=" + chargingInfo + "/" + chargingStats + "/" + eventHeadset + "/" + headsetStay + "/hotspot=" + hotspotCard + "/unlock=" + unlockNotice + "/peekProgress=" + peekProgress + "/progressForeground=" + progressForeground + "/progressAny=" + progressAny + "/stockCharging=" + stockChargingAnimation + "/recordingInput=" + concurrentRecordingInput
                 + "/alwaysVisible=" + alwaysVisible + "/notch=" + notchStyle + "/chargingText=" + chargingText + "/swipeUpHides=" + swipeUpHides + "/iMotion=" + iMode + "/material=" + materialStyle + "/roundness=" + customCardRoundness + "/" + cardCornerRadiusDp + "/outline=" + pillOutlineMode + "/blur=" + transitionBlurMode + "/" + appFilter.onlyListed() + appFilter.size();
     }
@@ -921,6 +957,54 @@ public final class ModuleSettings {
     }
 
     /** Calls from third-party calling apps shown on the island, not only the phone app's. */
+    /** Live voice levels beside an ongoing call in the compact pill. */
+    /** The compact call pill shows the call's running time instead of the voice bars. */
+    public static boolean callShowTime() {
+        ensureStarted();
+        return callShowTime;
+    }
+
+    /** A ringing alarm opens on the island with snooze and dismiss. */
+    public static boolean alarmCard() {
+        ensureStarted();
+        return alarmCard;
+    }
+
+    /** Galaxy Watch: connection, battery and charging cards. */
+    public static boolean watchCard() {
+        ensureStarted();
+        return watchCard;
+    }
+
+    /** The next calendar event counts down on the island shortly before it starts. */
+    public static boolean calendarCard() {
+        ensureStarted();
+        return calendarCard;
+    }
+
+    /** Car: a card when the car connects, and where and when it was parked when it disconnects. */
+    public static boolean carCard() {
+        ensureStarted();
+        return carCard;
+    }
+
+    /** Samsung Health workouts: time, heart rate and distance live on the island. */
+    public static boolean workoutCard() {
+        ensureStarted();
+        return workoutCard;
+    }
+
+    public static boolean callWaveform() {
+        ensureStarted();
+        return callWaveform && !lowPerformance;
+    }
+
+    /** Quick Share requests and transfers handled on the island instead of Quick Share's own sheet. */
+    public static boolean quickShare() {
+        ensureStarted();
+        return quickShare;
+    }
+
     public static boolean thirdPartyCalls() {
         ensureStarted();
         return thirdPartyCalls;
@@ -964,6 +1048,7 @@ public final class ModuleSettings {
     public static boolean alwaysVisible() { ensureStarted(); return alwaysVisible; }
     /** The compact pill drawn as a notch that hangs from the top edge of the screen (for phones with a notch). */
     public static boolean notchStyle() { ensureStarted(); return notchStyle; }
+    /** The "dynamic inset" style: apps end above a band at the bottom of the screen. */
 
     /** The charging details card as lines of text (live reading first, then the statistics) instead of the gauge. */
     public static boolean chargingTextLines() { ensureStarted(); return chargingText; }

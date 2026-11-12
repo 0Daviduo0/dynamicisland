@@ -21,7 +21,7 @@ import dev.android.dynamicisland.settings.ModuleSettings;
  */
 public final class GlyphIcon extends Drawable {
     /** Which pictogram to draw. {@code POWER_SAVE} is drawn as a battery with a plus cut out. */
-    public enum Kind { BATTERY, BATTERY_CHARGING, BELL, BELL_OFF, VIBRATE, HEADPHONES, CAMERA, MIC, LOCATION, MOON, PLANE, TORCH, HOTSPOT, ROTATE_LOCK, POWER_SAVE, DOWNLOAD, SPEAKER, FINGERPRINT, FACE, PIN }
+    public enum Kind { BATTERY, BATTERY_CHARGING, BELL, BELL_OFF, VIBRATE, HEADPHONES, CAMERA, MIC, LOCATION, MOON, PLANE, TORCH, HOTSPOT, ROTATE_LOCK, POWER_SAVE, DOWNLOAD, SPEAKER, FINGERPRINT, FACE, PIN, WATCH, ALARM, CALENDAR, CAR, WORKOUT }
 
     private static final int INTRINSIC_SIZE_PX = 96;
     /** An icon drawn again after this long without a draw plays from the start, like a fresh island. */
@@ -241,6 +241,21 @@ public final class GlyphIcon extends Drawable {
                 break;
             case PIN:
                 drawPin(c, cx, cy, s);
+                break;
+            case WATCH:
+                drawWatch(c, cx, cy, s);
+                break;
+            case ALARM:
+                drawAlarm(c, cx, cy, s);
+                break;
+            case CALENDAR:
+                drawCalendar(c, cx, cy, s);
+                break;
+            case CAR:
+                drawCar(c, cx, cy, s);
+                break;
+            case WORKOUT:
+                drawWorkout(c, cx, cy, s);
                 break;
             default:
                 break;
@@ -590,6 +605,125 @@ public final class GlyphIcon extends Drawable {
         c.drawArc(rect, -50f, 100f, false, paint);
         rect.set(cx - (s * 0.1f), cy - (s * 0.34f), cx + (s * 0.38f), cy + (s * 0.34f));
         c.drawArc(rect, -50f, 100f, false, paint);
+        paint.setStyle(Paint.Style.FILL);
+    }
+
+    /** A round watch face with two hands, and its strap above and below (Galaxy Watch). */
+    private void drawWatch(Canvas c, float cx, float cy, float s) {
+        float stroke = Math.max(1.5f, s * 0.07f);
+        paint.setStyle(Paint.Style.FILL);
+        rect.set(cx - (s * 0.15f), cy - (s * 0.44f), cx + (s * 0.15f), cy - (s * 0.2f));
+        c.drawRoundRect(rect, s * 0.05f, s * 0.05f, paint);
+        rect.set(cx - (s * 0.15f), cy + (s * 0.2f), cx + (s * 0.15f), cy + (s * 0.44f));
+        c.drawRoundRect(rect, s * 0.05f, s * 0.05f, paint);
+        int layer = c.saveLayer(cx - s, cy - s, cx + s, cy + s, null);
+        c.drawCircle(cx, cy, s * 0.27f, paint);
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        c.drawCircle(cx, cy, s * 0.27f - stroke, paint);
+        paint.setXfermode(null);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(stroke * 0.9f);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        c.drawLine(cx, cy, cx, cy - (s * 0.13f), paint);
+        c.drawLine(cx, cy, cx + (s * 0.09f), cy + (s * 0.05f), paint);
+        c.restoreToCount(layer);
+        paint.setStyle(Paint.Style.FILL);
+    }
+
+    /** An alarm clock: a ring with hands, two bells on top and two feet. */
+    private void drawAlarm(Canvas c, float cx, float cy, float s) {
+        float stroke = Math.max(1.5f, s * 0.075f);
+        float oy = cy + (s * 0.04f);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(stroke);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        c.drawCircle(cx, oy, s * 0.3f, paint);
+        c.drawLine(cx, oy, cx, oy - (s * 0.15f), paint);
+        c.drawLine(cx, oy, cx + (s * 0.1f), oy + (s * 0.07f), paint);
+        c.drawLine(cx - (s * 0.2f), oy + (s * 0.28f), cx - (s * 0.28f), oy + (s * 0.38f), paint);
+        c.drawLine(cx + (s * 0.2f), oy + (s * 0.28f), cx + (s * 0.28f), oy + (s * 0.38f), paint);
+        paint.setStyle(Paint.Style.FILL);
+        rect.set(cx - (s * 0.46f), oy - (s * 0.5f), cx - (s * 0.14f), oy - (s * 0.18f));
+        c.drawArc(rect, 180f, 90f, true, paint);
+        rect.set(cx + (s * 0.14f), oy - (s * 0.5f), cx + (s * 0.46f), oy - (s * 0.18f));
+        c.drawArc(rect, 270f, 90f, true, paint);
+    }
+
+    /** A calendar sheet: rings on top, a solid header band and a grid of days. */
+    private void drawCalendar(Canvas c, float cx, float cy, float s) {
+        float stroke = Math.max(1.5f, s * 0.07f);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(stroke);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        rect.set(cx - (s * 0.36f), cy - (s * 0.3f), cx + (s * 0.36f), cy + (s * 0.36f));
+        c.drawRoundRect(rect, s * 0.09f, s * 0.09f, paint);
+        c.drawLine(cx - (s * 0.17f), cy - (s * 0.42f), cx - (s * 0.17f), cy - (s * 0.24f), paint);
+        c.drawLine(cx + (s * 0.17f), cy - (s * 0.42f), cx + (s * 0.17f), cy - (s * 0.24f), paint);
+        paint.setStyle(Paint.Style.FILL);
+        rect.set(cx - (s * 0.36f), cy - (s * 0.3f), cx + (s * 0.36f), cy - (s * 0.1f));
+        c.drawRoundRect(rect, s * 0.06f, s * 0.06f, paint);
+        for (int row = 0; row < 2; row++) {
+            for (int col = -1; col <= 1; col++) {
+                c.drawCircle(cx + (col * s * 0.17f), cy + (s * 0.05f) + (row * s * 0.15f), s * 0.045f, paint);
+            }
+        }
+    }
+
+    /** A car seen from the front: roof, body, headlights and wheels. */
+    private void drawCar(Canvas c, float cx, float cy, float s) {
+        int layer = c.saveLayer(cx - s, cy - s, cx + s, cy + s, null);
+        paint.setStyle(Paint.Style.FILL);
+        path.reset();
+        path.moveTo(cx - (s * 0.26f), cy - (s * 0.08f));
+        path.lineTo(cx - (s * 0.19f), cy - (s * 0.3f));
+        path.quadTo(cx - (s * 0.17f), cy - (s * 0.35f), cx - (s * 0.11f), cy - (s * 0.35f));
+        path.lineTo(cx + (s * 0.11f), cy - (s * 0.35f));
+        path.quadTo(cx + (s * 0.17f), cy - (s * 0.35f), cx + (s * 0.19f), cy - (s * 0.3f));
+        path.lineTo(cx + (s * 0.26f), cy - (s * 0.08f));
+        path.close();
+        c.drawPath(path, paint);
+        rect.set(cx - (s * 0.4f), cy - (s * 0.1f), cx + (s * 0.4f), cy + (s * 0.2f));
+        c.drawRoundRect(rect, s * 0.08f, s * 0.08f, paint);
+        rect.set(cx - (s * 0.36f), cy + (s * 0.12f), cx - (s * 0.2f), cy + (s * 0.36f));
+        c.drawRoundRect(rect, s * 0.05f, s * 0.05f, paint);
+        rect.set(cx + (s * 0.2f), cy + (s * 0.12f), cx + (s * 0.36f), cy + (s * 0.36f));
+        c.drawRoundRect(rect, s * 0.05f, s * 0.05f, paint);
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        rect.set(cx - (s * 0.15f), cy - (s * 0.28f), cx + (s * 0.15f), cy - (s * 0.12f));
+        c.drawRoundRect(rect, s * 0.03f, s * 0.03f, paint);
+        c.drawCircle(cx - (s * 0.24f), cy + (s * 0.04f), s * 0.055f, paint);
+        c.drawCircle(cx + (s * 0.24f), cy + (s * 0.04f), s * 0.055f, paint);
+        paint.setXfermode(null);
+        c.restoreToCount(layer);
+    }
+
+    /** A running figure: head, bent arms and legs in stride. */
+    private void drawWorkout(Canvas c, float cx, float cy, float s) {
+        float stroke = Math.max(1.6f, s * 0.085f);
+        paint.setStyle(Paint.Style.FILL);
+        c.drawCircle(cx + (s * 0.08f), cy - (s * 0.34f), s * 0.085f, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(stroke);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        paint.setStrokeJoin(Paint.Join.ROUND);
+        path.reset();
+        path.moveTo(cx + (s * 0.02f), cy - (s * 0.18f));
+        path.lineTo(cx - (s * 0.06f), cy + (s * 0.06f));
+        path.lineTo(cx + (s * 0.12f), cy + (s * 0.2f));
+        path.lineTo(cx + (s * 0.08f), cy + (s * 0.4f));
+        c.drawPath(path, paint);
+        path.reset();
+        path.moveTo(cx - (s * 0.06f), cy + (s * 0.06f));
+        path.lineTo(cx - (s * 0.14f), cy + (s * 0.26f));
+        path.lineTo(cx - (s * 0.32f), cy + (s * 0.32f));
+        c.drawPath(path, paint);
+        path.reset();
+        path.moveTo(cx - (s * 0.28f), cy - (s * 0.06f));
+        path.lineTo(cx - (s * 0.12f), cy - (s * 0.16f));
+        path.lineTo(cx + (s * 0.02f), cy - (s * 0.18f));
+        path.lineTo(cx + (s * 0.14f), cy - (s * 0.04f));
+        path.lineTo(cx + (s * 0.3f), cy - (s * 0.06f));
+        c.drawPath(path, paint);
         paint.setStyle(Paint.Style.FILL);
     }
 }

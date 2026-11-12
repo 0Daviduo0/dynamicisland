@@ -211,7 +211,7 @@ public final class ChargingSource {
         item.title = text(status == BatteryManager.BATTERY_STATUS_FULL ? "island_charge_full"
                 : status == BatteryManager.BATTERY_STATUS_CHARGING ? "island_charging" : "island_charge_connected");
         item.icon = ModuleSettings.hideBatteryIcon() || level < 0 ? null : BatteryIcon.load(ctx, level, true);
-        item.accent = 0xFF30D158;
+        item.accent = 0xFF3DB653;
         item.trailing = IslandItem.Trailing.TEXT;
         double power = volts * currentMa / 1000;
         if (power > 300) power = Double.NaN;

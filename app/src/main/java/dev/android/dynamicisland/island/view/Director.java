@@ -306,6 +306,7 @@ final class Director {
     }
 
     private void appear(IslandItem primary, boolean fromLeft) {
+        cancelVanish();
         scene.contentHandoff = null;
         scene.mode = Mode.COMPACT;
         appearedAt = IslandView.now();
@@ -351,6 +352,15 @@ final class Director {
             return;
         }
         scene.mode = Mode.HIDDEN;
+        if (scene.mainIn != null && !wasExpanded && !scene.restingShown()) {
+            // the last island leaves the way it does for the pulled-down shade: bubble merges, pill shrinks into a
+            // dot with its content, the dot fades; finishVanish() puts the pill away once the dot is gone
+            scene.vanishing = true;
+            view.retargetVisibilityGate();
+            view.scheduleFrame();
+            view.notifyHost();
+            return;
+        }
         long t = IslandView.now();
         if (scene.mainIn != null) {
             scene.mainOut = scene.mainIn.toOutgoing(t, toLeft ? -1 : 0);
@@ -370,6 +380,30 @@ final class Director {
             host.onExpandedChanged(false);
         }
         view.notifyHost();
+    }
+
+    /** The dot of a vanishing island is gone: drop its content and reset the pill for the next appearance. */
+    void finishVanish() {
+        if (!scene.vanishing) return;
+        scene.vanishing = false;
+        if (scene.iMode != null) scene.iMode.finishVanish();
+        else { scene.mainIn = null; scene.mainOut = null; }
+        scene.bubbleIn = null; scene.bubbleOut = null;
+        sp.split.snapTo(0.0f);
+        sp.offsetX.snapTo(0.0f);
+        sp.width.snapTo(m.restWidth());
+        sp.height.snapTo(Math.min(m.restWidth(), m.pillH));
+        sp.visibility.snapTo(0.0f);
+        if (!scene.shadeGone && !scene.sleeping) sp.shadeGate.snapTo(1.0f);
+        view.scheduleFrame();
+        view.notifyHost();
+    }
+
+    /** A new island arrives while the last one is still shrinking away: it grows back out of the dot. */
+    private void cancelVanish() {
+        if (!scene.vanishing) return;
+        scene.vanishing = false;
+        view.retargetVisibilityGate();
     }
 
     /** Where the pill ends up with nothing to show: the empty pill if the user wants one, else the hole (and out). */
@@ -447,6 +481,7 @@ final class Director {
     /** Once the display is dark, do not carry half-folded cards or their blur surfaces into a wake. */
     void finishSleeping() {
         if(scene.iMode!=null) scene.iMode.finishSleeping();
+        finishVanish();
         cancelAutoCollapse();
         view.removeCallbacks(fadePillBlob);
         boolean hadCards = !scene.cards.isEmpty();

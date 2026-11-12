@@ -15,6 +15,10 @@ public final class Card {
     final FrostedSurface material = new FrostedSurface();
     boolean iMode;
     boolean iModePreview, iModePaging;
+    /** iMotion return: this folding card is drawn up into the camera before its compact slot comes back out. */
+    boolean iModeGather;
+    /** iMotion hide: this open card leaves into the camera instead of fading where it is. */
+    boolean iModeSuck;
     final Spring iModeRole = new Spring(0, .28f, 1).setValueThreshold(.002f);
     final ContentBlur iModeCompactBlur = new ContentBlur();
     final Spring cx = new Spring(0, .36f, .92f).setValueThreshold(.15f);

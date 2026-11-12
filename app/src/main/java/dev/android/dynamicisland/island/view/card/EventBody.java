@@ -18,7 +18,8 @@ public final class EventBody extends CardBody {
         super(owner, item, width);
         pad = owner.dp(18);
         icon = item.icon == null ? 0 : owner.dp(ModuleSettings.compactEventIcons() ? 24 : 36);
-        gaugeSize = item.eventLayout == IslandItem.EventLayout.DEVICE && item.batteryPercent >= 0 ? owner.dp(42) : 0;
+        gaugeSize = item.trailing == IslandItem.Trailing.ICON && item.trailingIcon != null ? icon
+                : item.eventLayout == IslandItem.EventLayout.DEVICE && item.batteryPercent >= 0 ? owner.dp(42) : 0;
         float room = width - pad * 2 - (icon == 0 ? 0 : icon + owner.dp(14)) - (gaugeSize == 0 ? 0 : gaugeSize + owner.dp(12));
         int textWidth = Math.max(1, Math.round(room));
         title = IslandView.layout(item.title, owner.titlePaint, textWidth, 2);
@@ -39,7 +40,10 @@ public final class EventBody extends CardBody {
         IslandView.drawLayout(canvas, title, left, top);
         owner.bodyPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a));
         if (subtitle != null) IslandView.drawLayout(canvas, subtitle, left, top + title.getHeight() + owner.dp(3));
-        if (gaugeSize > 0) gauge.draw(canvas, x + w - pad - gaugeSize / 2, midY,
+        if (gaugeSize > 0 && item.trailing == IslandItem.Trailing.ICON && item.trailingIcon != null) {
+            owner.drawDrawable(canvas, item.trailingIcon, false, item.symbolTint(), x + w - pad - gaugeSize, midY - gaugeSize / 2,
+                    gaugeSize, a, 0);
+        } else if (gaugeSize > 0) gauge.draw(canvas, x + w - pad - gaugeSize / 2, midY,
                 gaugeSize, item.batteryPercent, item.fillAccent(), a, true, false);
     }
 }

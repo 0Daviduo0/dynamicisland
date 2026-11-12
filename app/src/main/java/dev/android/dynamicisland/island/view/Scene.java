@@ -86,6 +86,9 @@ final class Scene {
     /** The shade is down far enough that the island has been sent away (it comes back only when the shade is nearly shut). */
     boolean shadeGone;
 
+    /** The last island is leaving through the shade gate (shrinking into a dot) instead of the plain hide. */
+    boolean vanishing;
+
     /** Opacity of the island for the notification shade: it stays solid while it shrinks into a dot and fades only once it is the dot. */
     float shadeAlpha() {
         float x = IslandView.clamp01(springs.shadeGate.value() * 10.0f);

@@ -137,7 +137,8 @@ public class GlowMotionTest {
             int sample=playing.getPixel(Math.round(shape.centerX()),Math.round(shape.top)-4);
             assertTrue(Color.alpha(sample)>0);assertTrue(Color.blue(sample)>Color.red(sample)*2);
         }
-        music.playing=false;frames(view,300);assertFalse(view.needsAudio());
+        music.playing=false;frames(view,600); // the pause settles over seconds (see the 720-step unit test above)
+        assertFalse(view.needsAudio());
         Bitmap paused=capture(view);
         assertTrue(haloLight(paused,body)<haloLight(playing,body)*.1);
         assertTrue(haloLight(paused,bubble)<haloLight(playing,bubble)*.1);
@@ -155,6 +156,8 @@ public class GlowMotionTest {
     private void frames(IslandView view,int count){
         for(int i=0;i<count;i++){
             org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(16));
+            // this loop is the vsync: the view's own paced callback would move the clock on top of the 16 ms step
+            android.view.Choreographer.getInstance().removeFrameCallback(view);
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             view.layout(0,0,600,150);
             view.doFrame(SystemClock.uptimeMillis()*1_000_000L);

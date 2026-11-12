@@ -100,8 +100,8 @@ public class RecordingWaveformTest {
             assertEquals(Math.min(expectedRadius,privacyBody.h/2),privacyBody.cornerRadius(28,privacyBody.h),.001f);
             card(canvas,privacyBody,left,286);
         }
-        assertTrue(colourPixels(sheet, 0xFFFF3B30) > 1000);
-        assertTrue(colourPixels(sheet, 0xFF3A3A3C) > 1000);
+        assertTrue(colourPixels(sheet, 0xFFF0453A) > 1000);
+        assertTrue(colourPixels(sheet, 0xFF3B3B3B) > 1000);
         RecordingWaveform waveform = new RecordingWaveform(input);
         Bitmap active = Bitmap.createBitmap(100, 40, Bitmap.Config.ARGB_8888);
         waveform.draw(new Canvas(active), item, 0, 20, 100, 34, 1);
@@ -143,7 +143,7 @@ public class RecordingWaveformTest {
         view.doFrame(SystemClock.uptimeMillis()*1_000_000L);
         assertTrue((boolean)ReflectionHelpers.getField(view,"frameScheduled"));
         item.voiceRecordingPaused = true;
-        ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(16));
+        ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(34)); // the next paced frame (ambient budget is 30 fps)
         view.doFrame(SystemClock.uptimeMillis()*1_000_000L);
         assertFalse("paused recording must not keep rendering", (boolean)ReflectionHelpers.getField(view,"frameScheduled"));
         prefs.edit().putBoolean(ModuleSettings.KEY_CONCURRENT_RECORDING_INPUT, false).commit();

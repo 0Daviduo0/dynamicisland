@@ -181,9 +181,19 @@ final class CallCardBuilder {
         boolean ringing = isRinging(info, pkg);
         addButtons(it, nowBar, pkg, ringing);
         if (ringing) {
-            // nobody has answered: say so instead of a clock, and offer answer / decline instead of speaker / end
+            // nobody has answered: the caller instead of a clock, and answer / decline instead of speaker / end
+            it.callRinging = true;
+            boolean named = it.title != null && !String.valueOf(it.title).equals(it.appName);
             it.trailing = IslandItem.Trailing.TEXT;
-            it.trailingText = IslandText.get(ctx, "island_incoming_call");
+            it.trailingText = named ? it.title : IslandText.get(ctx, "island_incoming_call");
+            if (named) it.subtitle = IslandText.get(ctx, "island_incoming_call");
+            if (it.cardImage != null && it.cardImage != it.icon && nowBar != null
+                    && Refl.get(nowBar, "mNowbarIcon") != null) {
+                // the caller's contact photo leads the pill too
+                it.icon = it.cardImage;
+                it.iconIsImage = true;
+                it.cardImageRound = true;
+            }
         } else {
             startClock(it, info, key);
         }

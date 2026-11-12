@@ -2,6 +2,7 @@ package dev.android.dynamicisland.xposed;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
+import dev.android.dynamicisland.xposed.hooks.EasySetupHooks;
 import dev.android.dynamicisland.xposed.hooks.SystemUiHooks;
 
 /**
@@ -11,6 +12,8 @@ import dev.android.dynamicisland.xposed.hooks.SystemUiHooks;
 public final class Entry implements IXposedHookLoadPackage {
     private static final String SYSTEM_UI = "com.android.systemui";
     private static boolean installed;
+    private static boolean easySetupInstalled;
+    private static boolean quickShareInstalled;
 
     /** Path of the apk this code was loaded from (tells an old install from the new one), or "?". */
     private static String moduleApk() {
@@ -29,6 +32,30 @@ public final class Entry implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
+        if (dev.android.dynamicisland.island.source.QuickShareState.PACKAGE.equals(lpparam.packageName)) {
+            // opt-in: only reached when the user adds Quick Share to the LSPosed scope
+            if (!quickShareInstalled && lpparam.packageName.equals(lpparam.processName)) {
+                quickShareInstalled = true;
+                try {
+                    dev.android.dynamicisland.xposed.hooks.QuickShareHooks.install(lpparam.classLoader);
+                } catch (Throwable t) {
+                    XLog.e("quick share hooks failed", t);
+                }
+            }
+            return;
+        }
+        if (EasySetupHooks.PACKAGE.equals(lpparam.packageName)) {
+            // opt-in: only reached when the user adds EasySetup to the LSPosed scope
+            if (!easySetupInstalled) {
+                easySetupInstalled = true;
+                try {
+                    EasySetupHooks.install(lpparam.classLoader);
+                } catch (Throwable t) {
+                    XLog.e("easysetup hooks failed", t);
+                }
+            }
+            return;
+        }
         boolean mainSystemUi = SYSTEM_UI.equals(lpparam.packageName) && SYSTEM_UI.equals(lpparam.processName);
         if (!mainSystemUi || installed) {
             return;

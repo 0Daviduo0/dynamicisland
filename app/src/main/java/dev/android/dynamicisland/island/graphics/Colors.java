@@ -21,11 +21,11 @@ public final class Colors {
     public static final int PILL_OUTLINE = 0x47FFFFFF;
     public static final int RIM_TOP = 0x38FFFFFF;
     public static final int RIM_BOTTOM = 0x0FFFFFFF;
-    public static final int CALL_GREEN = 0xFF34C759;
-    public static final int BUTTON_GRAY = 0xFF3A3A3C;
-    public static final int DESTRUCTIVE_RED = 0xFFFF3B30;
-    public static final int CARD_GLASS = 0xFF0E0E10;
-    public static final int CARD_SOLID = 0xFF141416;
+    public static final int CALL_GREEN = 0xFF3DB653; // One UI call accept green
+    public static final int BUTTON_GRAY = 0xFF3B3B3B; // neutral One UI grey
+    public static final int DESTRUCTIVE_RED = 0xFFF0453A; // One UI end call / delete red
+    public static final int CARD_GLASS = 0xFF181818;
+    public static final int CARD_SOLID = 0xFF1F1F1F; // One UI dark notification surface
     /** Marks a button without a fill (the glyph is drawn alone). */
     public static final int TRANSPARENT_MARK = 0x00FFFFFF;
     public static final int SEGMENT_UNREACHED = 0xFF9B9F9F;

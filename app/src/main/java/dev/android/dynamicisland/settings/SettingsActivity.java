@@ -471,7 +471,7 @@ public final class SettingsActivity extends Activity {
         boolean still = flag(ModuleSettings.KEY_LOW_PERFORMANCE, false) || flag(ModuleSettings.KEY_STATIC_WAVEFORM, false);
         LinearLayout motion = ui.card(page);
         toggle(motion, R.string.setting_haptics, R.string.setting_haptics_desc, ModuleSettings.KEY_HAPTICS, true);
-        toggle(motion, R.string.setting_shade_media, R.string.setting_shade_media_desc, ModuleSettings.KEY_SHADE_MEDIA, true);
+        toggle(motion, R.string.setting_shade_media, R.string.setting_shade_media_desc, ModuleSettings.KEY_SHADE_MEDIA, false);
         if (still) {
             ui.actionRow(motion, getString(R.string.ui_wave_motion), getString(R.string.low_performance_static_wave), null);
         } else {
@@ -536,6 +536,9 @@ public final class SettingsActivity extends Activity {
         dependent(progress, OneUi.rowOf(progressForeground), OneUi.rowOf(progressAny));
         toggle(activity, R.string.setting_hide_progress, R.string.setting_hide_progress_desc, ModuleSettings.KEY_HIDE_PROGRESS_ORIGINALS, true);
         toggle(activity, R.string.setting_calls, R.string.setting_calls_desc, ModuleSettings.KEY_THIRD_PARTY_CALLS, true);
+        toggle(activity, R.string.setting_call_waveform, R.string.setting_call_waveform_desc, ModuleSettings.KEY_CALL_WAVEFORM, true);
+        toggle(activity, R.string.setting_call_show_time, R.string.setting_call_show_time_desc, ModuleSettings.KEY_CALL_SHOW_TIME, false);
+        toggle(activity, R.string.setting_quick_share, R.string.setting_quick_share_desc, ModuleSettings.KEY_QUICK_SHARE, true);
         ui.category(page, getString(R.string.group_codes), getString(R.string.desc_codes));
         LinearLayout codes = ui.card(page);
         Switch otp = toggle(codes, R.string.setting_otp, R.string.setting_otp_desc, ModuleSettings.KEY_OTP_CARD, true);
@@ -574,6 +577,13 @@ public final class SettingsActivity extends Activity {
         toggle(device, R.string.setting_hotspot_card, R.string.setting_hotspot_card_desc, ModuleSettings.KEY_HOTSPOT_CARD, false);
         toggle(device, R.string.setting_unlock_notice, R.string.setting_unlock_notice_desc, ModuleSettings.KEY_UNLOCK_NOTICE, false);
         toggle(device, R.string.setting_torch_pill, R.string.setting_torch_pill_desc, ModuleSettings.KEY_TORCH_PILL, true);
+        ui.category(page, getString(R.string.group_now_cards), getString(R.string.desc_now_cards));
+        device = ui.card(page);
+        toggle(device, R.string.setting_alarm_card, R.string.setting_alarm_card_desc, ModuleSettings.KEY_ALARM_CARD, true);
+        toggle(device, R.string.setting_calendar_card, R.string.setting_calendar_card_desc, ModuleSettings.KEY_CALENDAR_CARD, true);
+        toggle(device, R.string.setting_watch_card, R.string.setting_watch_card_desc, ModuleSettings.KEY_WATCH_CARD, true);
+        toggle(device, R.string.setting_car_card, R.string.setting_car_card_desc, ModuleSettings.KEY_CAR_CARD, true);
+        toggle(device, R.string.setting_workout_card, R.string.setting_workout_card_desc, ModuleSettings.KEY_WORKOUT_CARD, true);
         ui.category(page, getString(R.string.group_privacy), getString(R.string.desc_privacy));
         LinearLayout privacy = ui.card(page);
         Switch indicator = toggle(privacy, R.string.setting_privacy, R.string.setting_privacy_desc, ModuleSettings.KEY_PRIVACY, true);

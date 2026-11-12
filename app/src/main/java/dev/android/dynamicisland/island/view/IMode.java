@@ -40,6 +40,8 @@ final class IMode {
     private final RectF outlineBounds=new RectF();
     private final Path gatherMask=new Path();
     private final RectF gatherOther=new RectF();
+    /** Per-frame scratch rects of the compact drawing; never handed out beyond the draw call. */
+    private final RectF pageBounds=new RectF(),compactNatural=new RectF(),compactBubble=new RectF();
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private String selected;
     private String rowAnchor;
@@ -52,6 +54,28 @@ final class IMode {
     private CompactPage compactPage;
     private boolean gestureHidden;
     private final Spring outline=new Spring(1,.22f,1).setValueThreshold(.001f);
+    /**
+     * A closing activity first is drawn up into the camera, then comes back out of it as its compact slot: the pill
+     * opens out of the hole, the bubble leaves the pill sideways on a liquid neck and bounces into place.
+     */
+    private static final int RETURN_NONE=0, RETURN_GATHER=1, RETURN_EMERGE=2;
+    private static final long GATHER_TIMEOUT_MS=520;
+    private static final float NECK_SPREAD=.55f;
+    /** Narrowest half-width the neck reaches just before it pinches off. */
+    private static final float NECK_WAIST_DP=1.1f;
+    /** How far past its resting gap the bubble can pull the neck before it lets go. */
+    private static final float NECK_BREAK_DP=7;
+    /** After the pinch each side keeps a short tail of goo that snaps back with a wobble. */
+    private static final float BUBBLE_TAIL_DP=8, PILL_TAIL_DP=6;
+    private boolean neckBroken;
+    private final Spring bubbleTail=new Spring(0,.2f,.42f).setValueThreshold(.2f);
+    private final Spring pillTail=new Spring(0,.2f,.42f).setValueThreshold(.2f);
+    private final Path tailPath=new Path();
+    private final List<Node> drawOrder=new ArrayList<>();
+    private int returning=RETURN_NONE;
+    private long returnAt;
+    private final Path liquidMainShape=new Path(),liquidJoin=new Path(),liquidNeck=new Path();
+    private final RectF liquidMain=new RectF(),liquidBubble=new RectF();
 
     /** Compact paging keeps one outline per slot; contents move inside it instead of crossing bodies. */
     private final class CompactPage {
@@ -114,6 +138,14 @@ final class IMode {
         final RectF target = new RectF();
         int slot = -1;
         boolean removed;
+        /** Takes part in the current return through the camera. */
+        boolean liquid;
+        /** A bubble that lost its slot stays where it is until the new bubble has landed on it. */
+        boolean parked;
+        long parkedAt;
+        /** The bubble this one landed on: its icon is still shown, blurring away, while this one's blurs in. */
+        Node swapFrom;
+        final Spring swap = new Spring(0,.32f,1).setValueThreshold(.002f);
         Node(IslandView view, IslandItem item) { refresh(view, item); }
         void refresh(IslandView view, IslandItem next) {
             item = next;
@@ -127,10 +159,12 @@ final class IMode {
         }
         boolean moving() {
             return !x.isAtRest() || !y.isAtRest() || !w.isAtRest() || !h.isAtRest()
-                    || !alpha.isAtRest() || !presence.isAtRest() || !iconOnly.isAtRest() || !press.isAtRest();
+                    || !alpha.isAtRest() || !presence.isAtRest() || !iconOnly.isAtRest() || !press.isAtRest() || !swap.isAtRest();
         }
         boolean step(float dt) {
-            return x.step(dt) | y.step(dt) | w.step(dt) | h.step(dt) | alpha.step(dt) | presence.step(dt) | iconOnly.step(dt) | press.step(dt);
+            boolean moving = x.step(dt) | y.step(dt) | w.step(dt) | h.step(dt) | alpha.step(dt) | presence.step(dt) | iconOnly.step(dt) | press.step(dt) | swap.step(dt);
+            if (swapFrom != null && swap.isAtRest()) swapFrom = null;
+            return moving;
         }
     }
 
@@ -158,6 +192,9 @@ final class IMode {
     void update() {
         syncOutlineTarget();
         boolean wasIdle = scene.restingShown() && scene.springs.visibility.value() > .5f;
+        // from nothing on screen the island grows out of the camera, as it does when the shade closes
+        boolean grow=scene.mode==Mode.HIDDEN && !keepsIdle() && !scene.shadeGone && !scene.sleeping && !scene.suppressed
+                && (scene.vanishing || nodes.values().stream().noneMatch(n->!n.removed && n.alpha.value()>.5f));
         activities.clear();
         for (Node node : nodes.values()) node.removed=true;
         for (IslandItem item : scene.stackItems(Integer.MAX_VALUE)) {
@@ -181,14 +218,32 @@ final class IMode {
         if(compactPage!=null && (compactPage.from.stream().anyMatch(n->n.removed)
                 || compactPage.to.stream().anyMatch(n->n.removed))) finishCompactInteraction();
         if (scene.items.isEmpty()) {
+            boolean vanish=scene.mode==Mode.COMPACT && !keepsIdle() && !scene.shadeGone && !scene.sleeping && !scene.suppressed
+                    && nodes.values().stream().anyMatch(n->n.alpha.value()>.5f);
             if(scene.mode==Mode.EXPANDED) collapse();
+            cancelReturn();
             selected=null;
             scene.mode=Mode.HIDDEN;
             director.cancelAutoCollapse();
             closeCards();
             layout();
-            scene.springs.visibility.animateTo(keepsIdle() ? 1 : 0,.36f,1);
+            if(vanish) {
+                // the last activity leaves the way it does for the pulled-down shade: into the camera, then gone
+                scene.vanishing=true;
+                view.retargetVisibilityGate();
+            } else if(!scene.vanishing) {
+                if(keepsIdle()) scene.springs.visibility.animateTo(1,.36f,1);
+                else hideWhenSucked(.36f);
+            }
         } else {
+            boolean growing=grow && !gestureHidden;
+            hidePending=false;
+            if(growing) cancelReturn();
+            if(growing && !scene.vanishing) {
+                scene.springs.shadeGate.snapTo(0);
+                scene.springs.visibility.snapTo(1);
+            }
+            if(scene.vanishing || growing) { scene.vanishing=false; view.retargetVisibilityGate(); }
             if (scene.mode==Mode.HIDDEN && !gestureHidden) scene.mode=Mode.COMPACT;
             scene.springs.visibility.animateTo(gestureHidden ? 0 : 1,.30f,1);
             if (selected!=null && (nodes.get(selected)==null || nodes.get(selected).removed)) {
@@ -200,6 +255,12 @@ final class IMode {
                 }
             } else if (selected!=null) refreshCard(nodes.get(selected));
             layout();
+            // the shade gate does the growing: the activities are there at full opacity from the first frame
+            if(growing) for(Node n:nodes.values()) if(n.slot>=0 && !n.removed) {
+                n.x.snapTo(n.target.centerX()); n.y.snapTo(n.target.centerY());
+                n.w.snapTo(n.target.width()); n.h.snapTo(n.target.height());
+                n.alpha.snapTo(1); n.presence.snapTo(1); n.iconOnly.snapTo(n.slot==0 ? 0 : 1);
+            }
         }
         scene.mainIn=scene.primary==null ? null : Layer.shown(new CompactContent(view,scene.primary));
         scene.bubbleIn=scene.secondary==null ? null : Layer.shown(new BubbleContent(view,scene.secondary));
@@ -283,7 +344,13 @@ final class IMode {
         visible.clear();
         for(Node n:nodes.values()) {
             if(n.slot>=0 && !n.removed && !gestureHidden) visible.add(n.item);
-            float visible=n.slot>=0 && !n.removed && scene.mode!=Mode.HIDDEN ? 1 : 0;
+            float visible=n.slot>=0 && !n.removed && scene.mode!=Mode.HIDDEN || scene.vanishing && n.removed && n.alpha.value()>.003f ? 1 : 0;
+            boolean park=n.slot<0 && !n.removed && scene.mode!=Mode.HIDDEN && !gestureHidden && row.size()>1
+                    && (n.parked || n.alpha.value()>.5f && n.iconOnly.value()>.5f);
+            if(park) {
+                visible=1;
+                if(!n.parked) { n.parked=true; n.parkedAt=IslandView.now(); }
+            } else n.parked=false;
             if(n.removed) {
                 if(scene.items.isEmpty() && keepsIdle()) {
                     idleBounds(n.target); // the last activity folds into the empty pill
@@ -310,14 +377,292 @@ final class IMode {
         }
         // A departing card returns to its own newly assigned slot, including a slot that is still moving.
         for(Card card:scene.cards) if(card.iMode && card.leaving && !card.iModePaging) targetCompact(card);
+        if(returning==RETURN_GATHER) gatherTargets();
+    }
+
+    // ---- a bubble taking over the bubble slot ----------------------------------------------------------------------
+
+    private static final long PARK_TIMEOUT_MS=1400;
+
+    /** The new bubble has landed on the parked one: same place, full size and opaque. */
+    private boolean landed(Node b) {
+        if(ownsSurface(b.item.key) || b.alpha.value()<.95f || b.presence.value()<.9f) return false;
+        if(returning==RETURN_GATHER && b.liquid) return false;
+        float w=b.target.width();
+        return Math.abs(b.x.value()-b.target.centerX())<Math.max(m.dp(3),w*.15f) && b.w.value()>w*.85f;
+    }
+
+    /** Lets parked bubbles go once covered: the newcomer shows their icon a moment longer and blurs it into its own. */
+    private boolean stepParked(long time) {
+        Node bubble=null;
+        for(Node n:nodes.values()) if(n.slot==1 && !n.removed) bubble=n;
+        boolean waiting=false;
+        for(Node n:nodes.values()) {
+            if(!n.parked) continue;
+            boolean covered=bubble!=null && landed(bubble);
+            if(bubble!=null && !covered && time-n.parkedAt<PARK_TIMEOUT_MS) { waiting=true; continue; }
+            n.parked=false;
+            if(covered) {
+                bubble.swapFrom=n; bubble.swap.snapTo(1); bubble.swap.animateTo(0);
+                n.alpha.snapTo(0); n.presence.snapTo(0);
+            } else {
+                n.alpha.animateTo(0); n.presence.animateTo(0);
+            }
+        }
+        return waiting;
+    }
+
+    // ---- returning through the camera ---------------------------------------------------------------------------
+
+    /** Starts the return after a collapse: everything that changes place is first drawn into the camera. */
+    private void beginReturn() {
+        cancelReturn();
+        if(scene.mode!=Mode.COMPACT || gestureHidden || scene.sleeping || scene.suppressed
+                || scene.springs.shadeGate.value()<.999f) return;
+        boolean any=false;
+        for(Node n:nodes.values()) {
+            if(n.slot<0 || n.removed) continue;
+            Card card=scene.findCard(n.item.key);
+            if(card!=null) {
+                if(card.iMode && card.leaving && !card.iModePreview && !card.iModePaging) {
+                    card.iModeGather=true; n.liquid=true;
+                }
+            } else if(n.alpha.value()>.5f) {
+                // A slot that stays where it is (the pill beside a returning bubble) is left alone.
+                n.bounds(rect);
+                n.liquid=Math.abs(rect.centerX()-n.target.centerX())>m.dp(4) || Math.abs(rect.width()-n.target.width())>m.dp(4);
+            }
+            any|=n.liquid;
+        }
+        if(!any) return;
+        returning=RETURN_GATHER; returnAt=IslandView.now();
+        gatherTargets();
+    }
+
+    private float gatherDot() { return m.restWidth(); }
+
+    private void gatherTargets() {
+        float dot=gatherDot();
+        for(Node n:nodes.values()) if(n.liquid) {
+            // narrower first, then drawn up: it reads as being sucked in rather than shrinking in place
+            n.x.animateTo(m.cx,.30f,.94f); n.y.animateTo(m.cy,.30f,.94f);
+            n.w.animateTo(dot,.24f,1); n.h.animateTo(dot,.30f,1);
+        }
+        for(Card c:scene.cards) if(c.iModeGather && c.leaving) {
+            c.targetW=dot; c.targetH=dot; c.targetCy=m.cy;
+            c.cx.animateTo(m.cx,.28f,.96f); c.cy.animateTo(m.cy,.28f,.96f);
+            c.w.animateTo(dot,.24f,1); c.h.animateTo(dot,.30f,1);
+        }
+    }
+
+    private boolean gathered() {
+        float dot=gatherDot()*1.3f, near=m.dp(2);
+        for(Card c:scene.cards) if(c.iModeGather && c.leaving && (c.w.value()>dot || c.h.value()>dot
+                || Math.abs(c.cx.value()-m.cx)>near || Math.abs(c.cy.value()-m.cy)>near)) return false;
+        for(Node n:nodes.values()) if(n.liquid && !ownsSurface(n.item.key) && (n.w.value()>dot || n.h.value()>dot
+                || Math.abs(n.x.value()-m.cx)>near || Math.abs(n.y.value()-m.cy)>near)) return false;
+        return true;
+    }
+
+    /** Inside the camera: the folded cards hand over to their slots, which open back out of the hole. */
+    private void emerge() {
+        returning=RETURN_EMERGE;
+        neckBroken=false; bubbleTail.snapTo(0); pillTail.snapTo(0);
+        float dot=gatherDot();
+        for(Card c:new ArrayList<>(scene.cards)) if(c.iModeGather && c.leaving) release(c);
+        boolean any=false;
+        for(Node n:nodes.values()) {
+            if(!n.liquid) continue;
+            if(n.slot<0 || n.removed) { n.liquid=false; defaultGeometry(n); continue; }
+            n.x.snapTo(m.cx); n.y.snapTo(m.cy); n.w.snapTo(dot); n.h.snapTo(dot);
+            n.alpha.snapTo(1); n.presence.snapTo(1); n.iconOnly.snapTo(n.slot==0 ? 0 : 1);
+            if(n.slot==0) {
+                n.x.animateTo(n.target.centerX(),.36f,.80f); n.y.animateTo(n.target.centerY(),.36f,.80f);
+                n.w.animateTo(n.target.width(),.42f,.64f); n.h.animateTo(n.target.height(),.34f,.58f);
+            } else {
+                // leaves the pill sideways, overshoots and swings back, while the neck stretches and lets go
+                n.x.animateTo(n.target.centerX(),.44f,.48f); n.y.animateTo(n.target.centerY(),.40f,.80f);
+                n.w.animateTo(n.target.width(),.40f,.56f); n.h.animateTo(n.target.height(),.40f,.56f);
+            }
+            any=true;
+        }
+        if(!any) endReturn();
+    }
+
+    private void endReturn() {
+        returning=RETURN_NONE;
+        neckBroken=false; bubbleTail.snapTo(0); pillTail.snapTo(0);
+        for(Node n:nodes.values()) if(n.liquid) { n.liquid=false; defaultGeometry(n); }
+    }
+
+    /** Any other interaction takes over from wherever the return got to; the springs keep their speed. */
+    private void cancelReturn() {
+        if(returning==RETURN_NONE) return;
+        for(Card c:scene.cards) c.iModeGather=false;
+        endReturn();
+    }
+
+    private static void defaultGeometry(Node n) {
+        n.x.setParams(RESPONSE,DAMPING); n.y.setParams(RESPONSE,DAMPING);
+        n.w.setParams(RESPONSE,DAMPING); n.h.setParams(RESPONSE,DAMPING);
+    }
+
+    private void stepReturn(float stepDt,long time) {
+        if(returning==RETURN_GATHER && (gathered() || time-returnAt>GATHER_TIMEOUT_MS)) emerge();
+        else if(returning==RETURN_EMERGE) {
+            bubbleTail.step(stepDt); pillTail.step(stepDt);
+            if(!neckBroken) pinchIfStretched();
+            if(!bubbleTail.isAtRest() || !pillTail.isAtRest()) return;
+            for(Node n:nodes.values()) if(n.liquid && n.moving()) return;
+            endReturn();
+        }
+    }
+
+    /** A returning slot's painted shape: it stretches along its travel and squashes across it. */
+    private void liquidBounds(Node n,RectF out) {
+        n.bounds(out);
+        if(returning!=RETURN_EMERGE || !n.liquid) return;
+        float speed=n.slot==0 ? Math.abs(n.w.velocity())/2 : Math.abs(n.x.velocity());
+        float s=IslandView.clamp01(speed/m.dp(n.slot==0 ? 1600 : 1000))*(n.slot==0 ? .10f : .22f);
+        float cx=out.centerX(), cy=out.centerY(), w=out.width()*(1+s), h=out.height()*(1-.6f*s);
+        out.set(cx-w/2,cy-h/2,cx+w/2,cy+h/2);
+    }
+
+    /** The content of a slot going into or out of the camera fades with its size. */
+    private float returnContent(Node n,RectF r) {
+        if(returning==RETURN_NONE || !n.liquid) return 1;
+        float dot=gatherDot();
+        return IslandView.clamp01((r.height()-dot)/Math.max(1,m.pillH*.7f-dot));
+    }
+
+    /**
+     * Builds the pill, the bubble coming out of it and the neck between them, and returns the neck's opacity.
+     * Fills {@link #liquidMain}, {@link #liquidBubble}, {@link #liquidMainShape} and {@link #liquidJoin}.
+     */
+    private Node pairNode(int slot) {
+        for(Node n:nodes.values()) if(!n.removed && n.slot==slot && !ownsSurface(n.item.key) && (slot==0 || n.liquid)) return n;
+        return null;
+    }
+
+    /** Distance from the pill's round right end to the bubble's centre, and the gaps at which the neck touches/rests. */
+    private float pairDistance(RectF main,RectF bubble) { return bubble.centerX()-(main.right-main.height()/2); }
+    private float touching(RectF main,RectF bubble) { return main.height()/2+Math.min(bubble.width(),bubble.height())/2; }
+    private float breakDistance(RectF main) { return main.height()/2+m.bubbleGap+m.bubbleR+m.dp(NECK_BREAK_DP); }
+
+    /**
+     * The neck lets go like a drop: once the bubble has pulled it past its resting gap, or as soon as the bubble stops
+     * pulling and swings back. Both ends keep a short tail that snaps back, and the bubble leaps on a little when freed.
+     */
+    private void pinchIfStretched() {
+        Node main=pairNode(0), bubble=pairNode(1);
+        if(main==null || bubble==null) { neckBroken=true; return; }
+        liquidBounds(main,liquidMain); liquidBounds(bubble,liquidBubble);
+        float distance=pairDistance(liquidMain,liquidBubble);
+        float rest=liquidMain.height()/2+m.bubbleGap+m.bubbleR;
+        boolean pastRest=distance>rest-m.dp(1);
+        if(distance<breakDistance(liquidMain) && !(pastRest && bubble.x.velocity()<=0)) return;
+        neckBroken=true;
+        bubbleTail.snapTo(m.dp(BUBBLE_TAIL_DP)); bubbleTail.animateTo(0);
+        pillTail.snapTo(m.dp(PILL_TAIL_DP)); pillTail.animateTo(0);
+        bubble.x.impulse(m.dp(70));
+    }
+
+    /**
+     * Builds the pill, the bubble coming out of it and the goo between them (the stretching neck, or the two tails it
+     * left), and returns the goo's opacity. Fills {@link #liquidMain}, {@link #liquidBubble}, {@link #liquidMainShape},
+     * {@link #liquidNeck} and {@link #liquidJoin} (the bubble, which the pill leaves uncovered).
+     */
+    private float liquidPair(Node main,Node bubble) {
+        liquidBounds(main,liquidMain); shadeBounds(liquidMain,liquidMain);
+        liquidBounds(bubble,liquidBubble); shadeBounds(liquidBubble,liquidBubble);
+        float r=liquidMain.height()/2, br=Math.min(liquidBubble.width(),liquidBubble.height())/2;
+        liquidMainShape.reset(); liquidMainShape.addRoundRect(liquidMain,r,r,Path.Direction.CW);
+        liquidJoin.reset(); liquidNeck.reset();
+        float pillX=liquidMain.right-r, pillY=liquidMain.centerY(), bubbleX=liquidBubble.centerX(), bubbleY=liquidBubble.centerY();
+        // still deep inside the pill: nothing of it shows, and the pill keeps its whole outline
+        if(bubbleX<=pillX || br<=0) return 0;
+        liquidJoin.addRoundRect(liquidBubble,liquidBubble.height()/2,liquidBubble.height()/2,Path.Direction.CW);
+        if(!neckBroken) {
+            float distance=pairDistance(liquidMain,liquidBubble), touching=touching(liquidMain,liquidBubble);
+            if(distance<=touching) {
+                // still overlapping: the classic goo between two touching circles
+                dev.android.dynamicisland.island.graphics.Metaball.neck(pillX,pillY,r,bubbleX,bubbleY,br,NECK_SPREAD,liquidNeck);
+            } else {
+                // one neck that gets longer and thinner while the bubble pulls away: a drop about to fall
+                float stretch=IslandView.clamp01((distance-touching)/Math.max(1,breakDistance(liquidMain)-touching));
+                dropNeck(pillX,r,bubbleX,br,(pillY+bubbleY)/2,stretch,liquidNeck);
+            }
+        } else {
+            float cy=(pillY+bubbleY)/2;
+            // each side keeps a rounded tail of goo that snaps back into its own shape
+            float lb=bubbleTail.value(), lp=pillTail.value();
+            if(Math.abs(lb)>.5f) tail(bubbleX,br,-1,lb,m.dp(BUBBLE_TAIL_DP),cy,liquidNeck);
+            if(Math.abs(lp)>.5f) {
+                tailPath.reset(); tail(pillX,r,1,lp,m.dp(PILL_TAIL_DP),cy,tailPath);
+                liquidNeck.op(tailPath,Path.Op.UNION);
+            }
+        }
+        // the goo is drawn first: the pill and the bubble cover its ends, so it only shows between them
+        return liquidNeck.isEmpty() ? 0 : 1;
+    }
+
+    /**
+     * An hourglass between the pill's round end (centre {@code ax}, radius {@code ar}) and the bubble: wide where it
+     * leaves both shapes and pinched in the middle, a little nearer the bubble, like a drop about to fall.
+     */
+    private void dropNeck(float ax,float ar,float bx,float br,float cy,float stretch,Path out) {
+        float hA=ar*(.72f-.34f*stretch), hB=br*(.72f-.34f*stretch);
+        float xA=ax+(float)Math.sqrt(Math.max(0,ar*ar-hA*hA))-m.dp(1);
+        float xB=bx-(float)Math.sqrt(Math.max(0,br*br-hB*hB))+m.dp(1);
+        if(xB<=xA) return;
+        float waist=Math.max(m.dp(NECK_WAIST_DP),Math.min(hA,hB)*.85f*(1-(float)Math.pow(stretch,.7f)));
+        float xM=xA+(xB-xA)*.56f, la=(xM-xA)*.55f, lb=(xB-xM)*.55f;
+        out.moveTo(xA,cy-hA);
+        out.cubicTo(xA+la,cy-hA,xM-la,cy-waist,xM,cy-waist);
+        out.cubicTo(xM+lb,cy-waist,xB-lb,cy-hB,xB,cy-hB);
+        out.lineTo(xB,cy+hB);
+        out.cubicTo(xB-lb,cy+hB,xM+lb,cy+waist,xM,cy+waist);
+        out.cubicTo(xM-la,cy+waist,xA+la,cy+hA,xA,cy+hA);
+        out.close();
+    }
+
+    /** A rounded cone of goo leaving a circle (centre {@code cx}, radius {@code r}) towards {@code dir}, {@code len} long. */
+    private void tail(float cx,float r,int dir,float len,float fullLen,float cy,Path out) {
+        float k=IslandView.clamp01(Math.abs(len)/fullLen);
+        float h=Math.min(r*.8f,m.dp(2)+r*.32f*k);
+        float x0=cx+dir*((float)Math.sqrt(Math.max(0,r*r-h*h))-m.dp(1));
+        float tipX=cx+dir*(r+len), tip=Math.min(h,m.dp(1.6f)+m.dp(1)*k);
+        float mid=(tipX-x0)*.5f;
+        out.moveTo(x0,cy-h);
+        out.cubicTo(x0+mid,cy-h,tipX,cy-tip,tipX,cy);
+        out.cubicTo(tipX,cy+tip,x0+mid,cy+h,x0,cy+h);
+        out.close();
+    }
+
+    private void drawNeck(Canvas canvas,float alpha) {
+        paint.setStyle(Paint.Style.FILL); paint.setColor(Colors.withAlpha(Colors.BLACK,alpha));
+        canvas.drawPath(liquidNeck,paint);
+        float outline=scene.pillOutlineOpacity()*alpha;
+        if(outline>.01f) {
+            int save=canvas.save();
+            canvas.clipOutPath(liquidMainShape);
+            outlineSurface.reset();
+            outlineSurface.addRoundRect(liquidBubble,liquidBubble.height()/2,liquidBubble.height()/2,Path.Direction.CW);
+            canvas.clipOutPath(outlineSurface);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(m.outlineW);
+            paint.setColor(Colors.withAlpha(Colors.PILL_OUTLINE,outline));
+            canvas.drawPath(liquidNeck,paint); paint.setStyle(Paint.Style.FILL);
+            canvas.restoreToCount(save);
+        }
     }
 
     void open(String key, boolean manual) {
         if(gestureHidden) return;
-        finishCompactInteraction();
-        abortSwipe();
         Node node=nodes.get(key);
         if(node==null || node.removed || scene.sleeping || scene.suppressed || scene.held) return;
+        cancelReturn();
+        finishCompactInteraction();
+        abortSwipe();
         if(key.equals(selected)) { refreshCard(node); changed(); return; }
         boolean wasExpanded=scene.mode==Mode.EXPANDED;
         node.bounds(source);
@@ -387,6 +732,7 @@ final class IMode {
                 finishCompactPage(direction>0 ? -m.dp(1000) : m.dp(1000));
             } else {
                 // A swipe during the tail of a card's fold still changes the destination row.
+                cancelReturn();
                 List<Node> row=rowNodes();if(row.isEmpty()) return;
                 int index=0;
                 for(int i=0;i<activities.size();i++) if(activities.get(i).key.equals(row.get(0).item.key)) index=i;
@@ -398,6 +744,7 @@ final class IMode {
     boolean dragCompact(float distance) {
         if(selected!=null || activities.size()<2 || scene.mode!=Mode.COMPACT || !scene.cards.isEmpty()) return false;
         int direction=distance<0 ? 1 : -1;
+        cancelReturn();
         if(compactPage!=null && compactPage.released) finishCompactInteraction();
         if(compactPage==null || compactPage.direction!=direction) {
             if(compactPage!=null) compactPage.clear();
@@ -469,7 +816,7 @@ final class IMode {
         scene.peekOpen=false; scene.held=false;
         director.cancelAutoCollapse();
         selected=null; scene.mode=scene.items.isEmpty() ? Mode.HIDDEN : Mode.COMPACT;
-        closeCards(); layout();
+        closeCards(); layout(); beginReturn();
         if(peek) host.onPeekClosed(closed);
         host.onExpandedChanged(false);
         changed();
@@ -480,20 +827,20 @@ final class IMode {
     /** @param upwardSpeed how fast the swipe was moving up (px/s): the pill leaves faster the faster it was thrown */
     void hideByGesture(float upwardSpeed) {
         if(gestureHidden || scene.sleeping || scene.suppressed || scene.held) return;
-        finishCompactInteraction();abortSwipe();
+        cancelReturn();finishCompactInteraction();abortSwipe();
         boolean expanded=scene.mode==Mode.EXPANDED;
         if(scene.peekOpen) host.onPeekClosed(director.clearPeek());
         scene.peekOpen=false;selected=null;gestureHidden=true;scene.mode=Mode.HIDDEN;
         director.cancelAutoCollapse();closeCards();layout();
         scene.springs.stackDx.animateTo(0);scene.springs.stackDy.animateTo(0);
         float hurry=Math.max(0,Math.min(1,upwardSpeed/m.dp(2500)));
-        scene.springs.visibility.animateTo(0,.36f-.14f*hurry,1);
+        hideWhenSucked(.36f-.14f*hurry);
         if(expanded) host.onExpandedChanged(false);
         Haptics.perform(view,HapticFeedbackConstants.CONTEXT_CLICK);changed();
     }
     void restoreByGesture() {
         if(!gestureHidden || scene.sleeping || scene.suppressed) return;
-        syncOutlineTarget();
+        syncOutlineTarget();cancelReturn();hidePending=false;
         gestureHidden=false;selected=null;
         scene.mode=scene.items.isEmpty() ? Mode.HIDDEN : Mode.COMPACT;
         layout(true);scene.springs.visibility.animateTo(scene.items.isEmpty() && !keepsIdle() ? 0 : 1,.30f,1);
@@ -530,13 +877,66 @@ final class IMode {
         c.cx.animateTo(end.centerX(),.36f,.90f); c.cy.animateTo(end.centerY(),.36f,.90f);
         c.w.animateTo(end.width(),.36f,.90f); c.h.animateTo(end.height(),.34f,.86f);
         c.iModeRole.animateTo(n.slot==0 ? 0 : 1);
-        c.iModeOpacity.animateTo(n.slot>=0 && !n.removed && scene.mode!=Mode.HIDDEN ? 1 : 0,.24f,1);
+        boolean stays=n.slot>=0 && !n.removed && scene.mode!=Mode.HIDDEN;
+        if(!stays && c.leaving && !c.iModePreview && !c.iModePaging && c.h.value()>m.pillH*1.2f) {
+            suckIntoCamera(c);
+            return;
+        }
+        c.iModeSuck=false;
+        c.iModeOpacity.animateTo(stays ? 1 : 0,.24f,1);
+    }
+
+    // ---- an open card leaving into the camera ----------------------------------------------------------------------
+
+    private static final long SUCK_TIMEOUT_MS=700;
+    /** The island's own fade waits for the open card to have gone into the camera. */
+    private boolean hidePending;
+    private float hideResponse=.36f;
+
+    /** An open card that goes away altogether narrows and is drawn up into the camera, instead of fading in place. */
+    private void suckIntoCamera(Card c) {
+        float dot=gatherDot();
+        c.iModeSuck=true;
+        c.targetW=dot; c.targetH=dot; c.targetCy=m.cy;
+        c.iModeOpacity.animateTo(1,.16f,1);
+        c.cx.animateTo(m.cx,.30f,.96f); c.cy.animateTo(m.cy,.32f,.96f);
+        c.w.animateTo(dot,.26f,1); c.h.animateTo(dot,.32f,1);
+    }
+
+    /** True while an open card is still being drawn into the camera: the island must not fade before it is in. */
+    boolean holdsVisibility() { return hidePending; }
+
+    private boolean sucking() {
+        for(Card c:scene.cards) if(c.iModeSuck && c.leaving) return true;
+        return false;
+    }
+
+    /** Fades the island out now, or once the open card has been drawn into the camera. */
+    private void hideWhenSucked(float response) {
+        hideResponse=response;
+        hidePending=sucking();
+        if(!hidePending) scene.springs.visibility.animateTo(0,response,1);
+    }
+
+    private boolean stepSuck(long time) {
+        float dot=gatherDot()*1.3f, near=m.dp(2);
+        for(Card c:new ArrayList<>(scene.cards)) {
+            if(!c.iModeSuck || !c.leaving) continue;
+            boolean inside=c.w.value()<dot && c.h.value()<dot && Math.abs(c.cy.value()-m.cy)<near && Math.abs(c.cx.value()-m.cx)<near;
+            if(inside || time-c.leaveAt>SUCK_TIMEOUT_MS) { c.iModeSuck=false; release(c); }
+        }
+        if(hidePending && !sucking()) {
+            hidePending=false;
+            // everything left is inside the camera hole: a short fade is all that is still seen
+            scene.springs.visibility.animateTo(0,Math.min(hideResponse,.2f),1);
+        }
+        return hidePending;
     }
     private void trimDepartures() {
         // Repeated taps cannot accumulate expensive RemoteViews, GPU materials or native blur windows.
         while(scene.cards.size()>3) {
             Card oldest=null;
-            for(Card card:scene.cards) if(card.leaving && !card.iModePreview && card!=swipeCard
+            for(Card card:scene.cards) if(card.leaving && !card.iModePreview && card!=swipeCard && !card.iModeGather && !card.iModeSuck
                     && (oldest==null || card.leaveAt<oldest.leaveAt)) oldest=card;
             if(oldest==null) break;
             release(oldest);
@@ -658,6 +1058,10 @@ final class IMode {
     boolean step(float dt,long time) {
         syncOutlineTarget();
         boolean active=outline.step(dt);
+        stepReturn(dt,time);
+        active|=returning!=RETURN_NONE;
+        active|=stepParked(time);
+        active|=stepSuck(time);
         if(compactPage!=null) {
             active|=compactPage.progress.step(dt)|compactPage.pull.step(dt)|compactPage.load.step(dt);compactPage.bounds();
             if(compactPage.released && compactPage.progress.isAtRest() && compactPage.pull.isAtRest()
@@ -670,7 +1074,8 @@ final class IMode {
             active|=moving || c.handoff!=null && !c.handoff.finished(time) || c.material.animating(time);
             if(c.iModePaging && !c.iModePreview && c!=swipeCard && c.dx.isAtRest()) {
                 if(c.leaving) release(c);else c.iModePaging=false;
-            } else if(c.leaving && !c.iModePreview && !c.iModePaging && !moving && (c.handoff==null || c.handoff.finished(time))) release(c);
+            } else if(c.leaving && !c.iModePreview && !c.iModePaging && !c.iModeGather && !c.iModeSuck && !moving
+                    && (c.handoff==null || c.handoff.finished(time))) release(c);
         }
         sortSurfaces();
         nodes.values().removeIf(n->{
@@ -687,7 +1092,9 @@ final class IMode {
         if(changed) { layout(); changed(); }
     }
     boolean animating() {
-        if(!outline.isAtRest()) return true;
+        if(!outline.isAtRest() || returning!=RETURN_NONE) return true;
+        for(Node n:nodes.values()) if(n.parked) return true;
+        if(hidePending) return true;
         if(compactPage!=null && (!compactPage.progress.isAtRest() || !compactPage.pull.isAtRest()
                 || !compactPage.load.isAtRest())) return true;
         for(Node n:nodes.values()) if(n.moving()) return true;
@@ -701,6 +1108,7 @@ final class IMode {
         for(Node node:nodes.values()) node.press.animateTo(1,.26f,.88f);
     }
     void relayout() {
+        cancelReturn();
         finishCompactInteraction();
         for(Node n:nodes.values()) n.refresh(view,n.item);
         layout();
@@ -821,11 +1229,29 @@ final class IMode {
         if(compactPage!=null) { drawCompactPage(canvas);return; }
         float gate=IslandView.clamp01(scene.springs.shadeGate.value());
         float contentAlpha=IslandView.clamp01((gate-.45f)/.4f);
-        for(Node n:nodes.values()) {
+        Node pairMain=null,pairBubble=null;
+        if(returning==RETURN_EMERGE) {
+            for(Node n:nodes.values()) if(!n.removed && !ownsSurface(n.item.key)) {
+                if(n.slot==0) pairMain=n; else if(n.slot==1 && n.liquid) pairBubble=n;
+            }
+            if(pairMain==null || pairBubble==null) { pairMain=null; pairBubble=null; }
+        }
+        float neckAlpha=pairMain!=null ? liquidPair(pairMain,pairBubble) : 0;
+        drawOrder.clear();
+        for(Node n:nodes.values()) if(n.parked) drawOrder.add(n);
+        int parkedCount=drawOrder.size();
+        for(Node n:nodes.values()) if(!n.parked) drawOrder.add(n);
+        // a bubble keeping its place lies under the goo and under the bubble coming to take it over
+        for(int i=0;i<drawOrder.size();i++) {
+            Node n=drawOrder.get(i);
+            if(i==parkedCount && neckAlpha>0) drawNeck(canvas,neckAlpha);
             float alpha=IslandView.clamp01(n.alpha.value());
             if(alpha<.003f || ownsSurface(n.item.key)) continue;
-            n.bounds(rect);
-            shadeBounds(rect,rect);
+            if(n==pairBubble) rect.set(liquidBubble);
+            else { liquidBounds(n,rect); shadeBounds(rect,rect); }
+            int pairSave=canvas.save();
+            // the bubble is still partly inside the pill: only what is already out of it shows
+            if(n==pairBubble) canvas.clipOutPath(liquidMainShape);
             view.drawCompactGlow(canvas,rect,alpha*contentAlpha);
             int save=canvas.saveLayerAlpha(rect.left-m.dp(2),rect.top-m.dp(2),rect.right+m.dp(2),rect.bottom+m.dp(2),Math.round(alpha*255));
             float radius=rect.height()/2;
@@ -833,6 +1259,7 @@ final class IMode {
             canvas.drawRoundRect(rect,radius,radius,paint);
             if(scene.pillOutlineOpacity()>.01f) {
                 int strokeSave=canvas.save();
+                if(n==pairMain) canvas.clipOutPath(liquidJoin);
                 if(gate<.999f) {
                     gatherMask.reset();
                     for(Node other:nodes.values()) if(other!=n && other.alpha.value()>.95f && !ownsSurface(other.item.key)) {
@@ -855,11 +1282,23 @@ final class IMode {
             motionBlur*=motionBlur;
             float blur=Math.max(1-IslandView.clamp01(n.presence.value()),
                     Math.max(motionBlur,Math.max(1-contentAlpha,Math.abs(n.iconOnly.target()-role))));
+            float shown=contentAlpha*returnContent(n,rect);
+            Node from=n.swapFrom;
+            float swap=from!=null ? IslandView.clamp01(n.swap.value()) : 0;
+            if(swap>.003f) {
+                // the icon it landed on blurs away while its own comes into focus
+                Canvas old=from.blur.begin(canvas,rect,Math.min(1,(1-swap)*1.4f),m.dp(ContentBlur.RADIUS_DP));
+                try { drawCompact(old,from,rect,1,shown*swap); }
+                finally { from.blur.end(canvas,old); }
+                blur=Math.max(blur,Math.min(1,swap*1.4f));
+                shown*=1-swap;
+            }
             Canvas content=n.blur.begin(canvas,rect,blur,m.dp(ContentBlur.RADIUS_DP));
-            try { drawCompact(content,n,rect,role,contentAlpha); }
+            try { drawCompact(content,n,rect,role,shown); }
             finally { n.blur.end(canvas,content); }
-            if(n.slot==1 && rowCount>2 && contentAlpha>.01f) drawOverflow(canvas,rect,rowCount-2,contentAlpha);
+            if(n.slot==1 && rowCount>2 && shown>.01f) drawOverflow(canvas,rect,rowCount-2,shown);
             canvas.restoreToCount(save);
+            canvas.restoreToCount(pairSave);
         }
     }
     private void drawCompactPage(Canvas canvas) {
@@ -870,7 +1309,7 @@ final class IMode {
     private void drawPageCell(Canvas canvas,CompactPage page,RectF frame,int slot) {
         float gate=IslandView.clamp01(scene.springs.shadeGate.value());
         float contentAlpha=IslandView.clamp01((gate-.45f)/.4f);
-        RectF bounds=new RectF();shadeBounds(frame,bounds);
+        RectF bounds=pageBounds;shadeBounds(frame,bounds);
         view.drawCompactGlow(canvas,bounds,contentAlpha);
         float radius=bounds.height()/2;
         paint.setStyle(Paint.Style.FILL);paint.setColor(Colors.BLACK);canvas.drawRoundRect(bounds,radius,radius,paint);
@@ -961,13 +1400,15 @@ final class IMode {
             // the artwork, glyphs, digits or waveform. Only shrink uniformly while returning to a bubble.
             float scale=Math.max(.001f,Math.min(1,Math.min(r.height()/m.pillH,r.width()/n.compact.desiredWidth())));
             float width=r.width()/scale;
-            RectF natural=new RectF(r.centerX()-width/2,r.centerY()-m.pillH/2,r.centerX()+width/2,r.centerY()+m.pillH/2);
+            RectF natural=compactNatural;
+            natural.set(r.centerX()-width/2,r.centerY()-m.pillH/2,r.centerX()+width/2,r.centerY()+m.pillH/2);
             int save=canvas.save();canvas.scale(scale,scale,r.centerX(),r.centerY());
             n.compact.draw(canvas,natural,alpha*(1-iconOnly),1000);canvas.restoreToCount(save);
         }
         if(iconOnly>.001f) {
             float d=Math.min(r.width(),r.height());
-            RectF bubble=new RectF(r.centerX()-d/2,r.centerY()-d/2,r.centerX()+d/2,r.centerY()+d/2);
+            RectF bubble=compactBubble;
+            bubble.set(r.centerX()-d/2,r.centerY()-d/2,r.centerX()+d/2,r.centerY()+d/2);
             n.bubble.draw(canvas,bubble,alpha*iconOnly,1000);
         }
     }
@@ -1009,6 +1450,7 @@ final class IMode {
     }
 
     void dispose() {
+        returning=RETURN_NONE; hidePending=false;
         if(compactPage!=null) { compactPage.clear();compactPage=null; }
         swipeCard=null;swipePreview=null;
         for(Card c:new ArrayList<>(scene.cards)) release(c);
@@ -1016,7 +1458,15 @@ final class IMode {
         nodes.clear();activities.clear();visible.clear();
     }
 
+    /** The vanishing activities reached the camera: drop them so the next one starts fresh. */
+    void finishVanish() {
+        cancelReturn();
+        for(Node n:nodes.values()) if(n.removed) { n.alpha.snapTo(0); n.presence.snapTo(0); }
+        layout();
+    }
+
     void finishSleeping() {
+        cancelReturn();
         if(compactPage!=null) { compactPage.clear();compactPage=null; }
         swipeCard=null;swipePreview=null;
         selected=null;

@@ -25,7 +25,7 @@ public final class BatteryIcon {
         @Override public void draw(Canvas canvas) {
             Rect b = getBounds();
             gauge.draw(canvas, b.exactCenterX(), b.exactCenterY(), Math.min(b.width(), b.height()), level,
-                    charging ? 0xFF30D158 : level <= 20 ? Colors.DESTRUCTIVE_RED : Colors.WHITE,
+                    charging ? 0xFF3DB653 : level <= 20 ? Colors.DESTRUCTIVE_RED : Colors.WHITE,
                     alpha / 255f, false, charging);
         }
         @Override public void setAlpha(int value) { alpha = value; invalidateSelf(); }

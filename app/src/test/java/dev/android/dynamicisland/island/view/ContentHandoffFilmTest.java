@@ -37,6 +37,7 @@ public class ContentHandoffFilmTest {
         IslandItem item = new IslandItem("live:handoff");
         item.title = "Live activity";
         item.accent = Color.GREEN;
+        item.customAccent = Color.GREEN; // symbols are white unless themed: a themed accent keeps them countable
         item.cardIcon = new ColorDrawable(Color.GREEN);
         item.progress = .5f;
         FrameLayout remote = new FrameLayout(RuntimeEnvironment.getApplication());

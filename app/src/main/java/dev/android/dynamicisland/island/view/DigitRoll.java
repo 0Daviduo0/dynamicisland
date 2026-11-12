@@ -1,7 +1,7 @@
 package dev.android.dynamicisland.island.view;
 
 /**
- * Per-digit roll state for "12:34" style text so only the digits that change animate. Used by
+ * Per-digit roll state for numeric text ("12:34", "85%") so only the digits that change animate. Used by
  * {@code IslandView.drawTime}; main thread only.
  */
 public final class DigitRoll {
@@ -13,9 +13,15 @@ public final class DigitRoll {
     long[] start = new long[0];
     String text = "";
 
-    /** Only digits left of the last colon roll, so the fractional part stays still. */
+    /**
+     * Every digit rolls, except the hundredths of a stopwatch ("1:23.45"): they change every frame, so a roll
+     * there would never settle.
+     */
     private static boolean rolls(String text, int index) {
-        return Character.isDigit(text.charAt(index)) && index < text.lastIndexOf(':');
+        char ch = text.charAt(index);
+        if (ch < '0' || ch > '9') return false;
+        int colon = text.lastIndexOf(':');
+        return colon < 0 || index < colon || index < text.lastIndexOf('.') || text.lastIndexOf('.') < colon;
     }
 
     /** Registers the new text and returns the time at which every roll is finished. */

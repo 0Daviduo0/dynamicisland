@@ -183,17 +183,17 @@ public class SliderBody extends CardBody {
             return;
         }
         Paint.FontMetrics fm = owner.smallPaint.getFontMetrics();
-        float x = right - owner.dp(VALUE_INSET_DP) - owner.smallPaint.measureText(text);
+        float x = right - owner.dp(VALUE_INSET_DP) - IslandView.timeWidth(owner.smallPaint, text);
         float baseline = top + (height / 2.0f) - ((fm.ascent + fm.descent) / 2.0f);
         c.save();
         c.clipRect(left, top, fillRight, top + height);
         owner.smallPaint.setColor(Colors.withAlpha(ICON_ON_FILL, alpha));
-        c.drawText(text, x, baseline, owner.smallPaint);
+        owner.drawTime(c, item.key + "#value", text, owner.smallPaint, x, baseline, false);
         c.restore();
         c.save();
         c.clipRect(fillRight, top, right, top + height);
         owner.smallPaint.setColor(Colors.withAlpha(Colors.WHITE, 0.9f * alpha));
-        c.drawText(text, x, baseline, owner.smallPaint);
+        owner.drawTime(c, item.key + "#value", text, owner.smallPaint, x, baseline, false);
         c.restore();
     }
 

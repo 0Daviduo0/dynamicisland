@@ -685,7 +685,7 @@
     <string name="perf_static_waveform">静止した波形</string>
     <string name="perf_static_waveform_desc">波形は動かず、そのための音声解析も行いません。</string>
     <string name="perf_limit_frame_rate">フレームレートを制限</string>
-    <string name="perf_limit_frame_rate_desc">周囲のアニメは最大30fps、タッチは最大60fpsで描画します。</string>
+    <string name="perf_limit_frame_rate_desc">周囲のアニメは最大24fps、タッチは最大60fpsで描画します。</string>
     <string name="perf_still_icons">静止したアニメーションアイコン</string>
     <string name="perf_still_icons_desc">アニメーションアイコンを最後の姿で表示します。</string>
     <string name="perf_covered">上の低負荷モードがこれらをすべて適用しています。</string>

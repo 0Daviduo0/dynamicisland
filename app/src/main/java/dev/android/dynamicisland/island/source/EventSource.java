@@ -42,7 +42,7 @@ public final class EventSource {
     private static final long BLUETOOTH_MS = 4500;
     private static final int LOW_BATTERY_PERCENT = 15;
 
-    private static final int GREEN = 0xFF30D158;
+    private static final int GREEN = 0xFF3DB653;
     private static final int RED = 0xFFFF453A;
     private static final int ORANGE = 0xFFFF9F0A;
     private static final int BLUE = 0xFF0A84FF;
@@ -67,6 +67,8 @@ public final class EventSource {
         }
     };
     private final Map<String, IslandItem> events = new LinkedHashMap<>();
+    /** Told the address of every Bluetooth audio device that connects (Galaxy Buds get their own card). */
+    public java.util.function.BiConsumer<String, String> onAudioConnected;
     /** Last known on/off state per quick-setting name, to announce only real changes. */
     private final Map<String, Boolean> toggleState = new LinkedHashMap<>();
     /** Torch state per camera id; the flashlight counts as on while any camera's torch is on. */
@@ -447,7 +449,9 @@ public final class EventSource {
                 return;
             }
             int battery = batteryOf(device);
-            show(bluetoothItem(device, battery), BLUETOOTH_MS);
+            IslandItem card = bluetoothItem(device, battery);
+            if (onAudioConnected != null) onAudioConnected.accept(device.getAddress(), String.valueOf(card.title));
+            show(card, BLUETOOTH_MS);
         } else if (BT_BATTERY_ACTION.equals(i.getAction())) {
             IslandItem old = events.get("event:bt:" + device.getAddress());
             if (old != null) {

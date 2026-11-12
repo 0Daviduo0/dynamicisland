@@ -685,7 +685,7 @@
     <string name="perf_static_waveform">Статичная волна</string>
     <string name="perf_static_waveform_desc">Волна не движется, и звук для неё больше не анализируется.</string>
     <string name="perf_limit_frame_rate">Ограничить частоту кадров</string>
-    <string name="perf_limit_frame_rate_desc">Фон до 30 кадр/с, отклик на касания до 60 кадр/с.</string>
+    <string name="perf_limit_frame_rate_desc">Фон до 24 кадр/с, отклик на касания до 60 кадр/с.</string>
     <string name="perf_still_icons">Статичные анимированные значки</string>
     <string name="perf_still_icons_desc">Анимированные значки показывают конечный кадр.</string>
     <string name="perf_covered">Режим низкой нагрузки выше уже применяет всё это.</string>

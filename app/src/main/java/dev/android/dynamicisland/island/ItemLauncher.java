@@ -28,7 +28,9 @@ final class ItemLauncher {
     void open(IslandItem item, RectF from) {
         try {
             Bundle options = launchOptions(from);
-            if (item.contentIntent != null) {
+            if (item.open != null) {
+                item.open.run();
+            } else if (item.contentIntent != null) {
                 PendingIntent pi = item.contentIntent;
                 pi.send(ctx, 0, null, null, null, null, options);
             } else if (item.packageName != null) {

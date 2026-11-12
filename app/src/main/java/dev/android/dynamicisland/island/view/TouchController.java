@@ -74,6 +74,7 @@ final class TouchController {
     private boolean holdPending;
     private Axis axis = Axis.UNDECIDED;
     private boolean stackDragging;
+    private float lastScrollY;
     private VelocityTracker velocity;
 
     TouchController(IslandView view, IslandHost host, Metrics m, Scene scene, Shapes shapes, Director director, ButtonPress buttons) {

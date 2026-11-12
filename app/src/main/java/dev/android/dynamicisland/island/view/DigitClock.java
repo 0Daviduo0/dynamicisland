@@ -10,8 +10,12 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Draws time strings such as "12:34" whose changing digits roll vertically (downwards for countdowns). */
+/**
+ * Draws numeric strings ("12:34", "85%", "2 - 1", "3/5") whose changing digits roll vertically (downwards for
+ * countdowns). Digits sit in equal cells so a changing number never makes its neighbours jump.
+ */
 final class DigitClock {
+    private final android.graphics.Paint.FontMetrics fm = new android.graphics.Paint.FontMetrics();
     /** Roll state older than this is dropped once more than {@link #CACHE_SIZE} entries exist. */
     private static final long STALE_MS = 5000;
     private static final int CACHE_SIZE = 12;
@@ -20,6 +24,10 @@ final class DigitClock {
     private final IslandView view;
     private final Map<String, DigitRoll> rolls = new HashMap<>();
     private long rollingUntil;
+    /** Below this many pixels the overshoot left at the end of a roll cannot be seen. */
+    private static final float SETTLED_PX = 0.4f;
+    private float settleTravel = -1;
+    private float settleAt = 1;
 
     DigitClock(IslandView view) {
         this.view = view;
@@ -43,9 +51,28 @@ final class DigitClock {
         return (ch >= '0' && ch <= '9') ? digitCell : paint.measureText(text, index, index + 1);
     }
 
-    /** Whether {@code text} is a clock string that {@link #draw} lays out cell by cell. */
+    /** Whether {@code text} is a clock string ("12:34", "1:02:03.45"). */
     static boolean isClock(String text) {
         return text != null && matchesTime(text);
+    }
+
+    /** Longest text laid out cell by cell; longer strings are prose with a number in it, drawn as usual. */
+    private static final int MAX_ROLL_LENGTH = 14;
+
+    /**
+     * Whether {@link #draw} lays {@code text} out cell by cell with rolling digits: clocks and short numeric text
+     * (a percentage, a score, a count with a short unit). Allocation-free: runs for every number on every frame.
+     */
+    static boolean isRollable(String text) {
+        if (text == null || text.isEmpty() || text.length() > MAX_ROLL_LENGTH) return false;
+        int digits = 0;
+        int letters = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (isDigit(ch)) digits++;
+            else if (Character.isLetter(ch)) letters++;
+        }
+        return digits > 0 && letters <= 4;
     }
 
     /**
@@ -98,7 +125,7 @@ final class DigitClock {
         if (text == null) {
             return 0.0f;
         }
-        if (!isClock(text)) {
+        if (!isRollable(text)) {
             return paint.measureText(text);
         }
         float digit = digitCell(paint);
@@ -119,19 +146,21 @@ final class DigitClock {
         if (text == null) {
             return;
         }
-        if (!isClock(text)) {
+        if (!isRollable(text)) {
             c.drawText(text, left, baseline, paint);
             return;
         }
         long t = IslandView.now();
         DigitRoll roll = rollFor(key, text, t);
-        long until = roll.update(text, t);
+        paint.getFontMetrics(fm);
+        float travel = (fm.descent - fm.ascent) * 0.8f;
+        float settled = settleAt(travel);
+        // frames stop once the digit sits still on screen, not when the curve's invisible tail ends
+        long until = roll.update(text, t) - Math.round(IslandView.ROLL_MS * (1.0f - settled));
         if (until > rollingUntil) {
             rollingUntil = until;
             view.scheduleFrame();
         }
-        Paint.FontMetrics fm = paint.getFontMetrics();
-        float travel = (fm.descent - fm.ascent) * 0.8f;
         float dir = countDown ? -1.0f : 1.0f;
         int baseAlpha = paint.getAlpha();
         float digit = digitCell(paint);
@@ -143,7 +172,7 @@ final class DigitClock {
             float gx = x + ((cell - paint.measureText(text, i, i + 1)) / 2.0f);
             x += cell;
             float p = (t - roll.start[i]) / (float) IslandView.ROLL_MS;
-            if (p >= 1.0f || roll.from[i] == ch) {
+            if (p >= settled || roll.from[i] == ch) {
                 c.drawText(text, i, i + 1, gx, baseline, paint);
                 continue;
             }
@@ -160,6 +189,20 @@ final class DigitClock {
             paint.setAlpha(baseAlpha);
             c.restoreToCount(save);
         }
+    }
+
+    /**
+     * Progress from which a roll of {@code travel} pixels looks finished: the old digit is gone (it leaves by
+     * 80 %), the new one fully opaque and its remaining overshoot under {@link #SETTLED_PX}.
+     */
+    private float settleAt(float travel) {
+        if (travel != settleTravel) {
+            float p = 0.8f;
+            while (p < 1.0f && Math.abs(easeOutBack(p) - 1.0f) * travel >= SETTLED_PX) p += 0.005f;
+            settleTravel = travel;
+            settleAt = Math.min(1.0f, p);
+        }
+        return settleAt;
     }
 
     /** The roll state for {@code key}; a new one starts fully settled on {@code text}. */

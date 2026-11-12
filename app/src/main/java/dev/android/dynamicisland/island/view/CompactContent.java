@@ -15,6 +15,8 @@ import java.util.regex.Matcher;
  * side is the away team's logo, with the score in between (or, around a hole, one score on each side).
  */
 public final class CompactContent extends Content {
+    /** Reused per draw; a new FontMetrics each frame is garbage at 120 Hz. */
+    private final android.graphics.Paint.FontMetrics fm = new android.graphics.Paint.FontMetrics();
     /** Smallest width the trailing part may be squeezed to. */
     private static final float MIN_TRAILING_DP = 20.0f;
     /** Home score, shown beside the home logo (only when the score text splits around a hole). */
@@ -47,6 +49,14 @@ public final class CompactContent extends Content {
         }
         leadingLabel = null;
         leadingLabelW = 0;
+        if (owner.hasCallWaveform(item) && !teams) {
+            // call pill: voice bars at the trailing side, no clock (the setting "call time" shows it instead)
+            float waveW = owner.callWaveWidth();
+            boolean changed = Math.abs(waveW - trailW) > 0.5f;
+            trailText = null;
+            trailW = waveW;
+            return changed;
+        }
         if (item.compactLabel != null && item.trailing == IslandItem.Trailing.TEXT
                 && !item.compactLabel.toString().equals(text)) {
             float room = owner.holeD > 0 ? (owner.maxPillW - owner.holeD) / 2 - owner.holeGap - owner.padding
@@ -56,7 +66,7 @@ public final class CompactContent extends Content {
             if (room >= owner.dp(16)) {
                 leadingLabel = TextUtils.ellipsize(item.compactLabel, owner.trailPaint,
                         Math.min(owner.dp(96), room), TextUtils.TruncateAt.END).toString();
-                leadingLabelW = owner.trailPaint.measureText(leadingLabel);
+                leadingLabelW = DigitClock.width(owner.trailPaint, leadingLabel);
             }
         }
         float maxTrail = maxTrailingWidth();
@@ -64,7 +74,7 @@ public final class CompactContent extends Content {
             float maxHalf = Math.max(0.0f, (maxTrail - owner.leadSize) - owner.innerGap);
             scoreA = TextUtils.ellipsize(scoreA, owner.trailPaint, maxHalf, TextUtils.TruncateAt.END).toString();
             scoreB = TextUtils.ellipsize(scoreB, owner.trailPaint, maxHalf, TextUtils.TruncateAt.END).toString();
-            scoreW = Math.max(owner.trailPaint.measureText(scoreA), owner.trailPaint.measureText(scoreB));
+            scoreW = Math.max(DigitClock.width(owner.trailPaint, scoreA), DigitClock.width(owner.trailPaint, scoreB));
             width = owner.leadSize + owner.innerGap + scoreW;
         } else if (teams) {
             scoreA = null;
@@ -75,7 +85,7 @@ public final class CompactContent extends Content {
             } else {
                 text = null;
             }
-            scoreW = text == null ? 0.0f : owner.trailPaint.measureText(text);
+            scoreW = text == null ? 0.0f : DigitClock.width(owner.trailPaint, text);
             width = owner.leadSize + scoreW + (text != null ? owner.innerGap : 0.0f);
         } else {
             if (text != null && item.trailing == IslandItem.Trailing.TEXT) {
@@ -140,9 +150,13 @@ public final class CompactContent extends Content {
         return Math.max(owner.leadSize, Math.min(owner.dp(42), available));
     }
 
+
     @Override
     void draw(Canvas c, RectF shape, float alpha, long elapsedIn) {
-        if (item.trailing == IslandItem.Trailing.CHRONOMETER) {
+        boolean callWave = owner.hasCallWaveform(item) && !teams;
+        if (callWave) {
+            leadingLabel = null;
+        } else if (item.trailing == IslandItem.Trailing.CHRONOMETER) {
             trailText = owner.trailingString(item);
         }
         float midY = shape.centerY();
@@ -164,16 +178,19 @@ public final class CompactContent extends Content {
                         : shape.right - owner.padding - trailW - owner.innerGap;
                 int save = c.save();
                 c.clipRect(left, shape.top, Math.max(left, limit), shape.bottom);
-                owner.trailPaint.setColor(Colors.withAlpha(Colors.WHITE, alpha));
-                Paint.FontMetrics fm = owner.trailPaint.getFontMetrics();
-                c.drawText(leadingLabel, left, midY - (fm.ascent + fm.descent) / 2, owner.trailPaint);
+                owner.trailPaint.setColor(Colors.withAlpha(callWave ? item.accent : Colors.WHITE, alpha));
+                owner.trailPaint.getFontMetrics(fm);
+                owner.drawTime(c, item.key + "#lead", leadingLabel, owner.trailPaint, left, midY - (fm.ascent + fm.descent) / 2, false);
                 c.restoreToCount(save);
             }
         }
-        if (trailW > 0.0f) {
+        if (callWave) {
+            owner.drawCallWaveform(c, item, shape.right - owner.padding - trailW, midY, alpha);
+        } else if (trailW > 0.0f) {
             owner.drawTrailing(c, item, trailText, shape.right - owner.padding, midY, trailW, alpha);
         }
     }
+
 
     private void drawTeams(Canvas c, RectF shape, float midY, float lead, float alpha) {
         float corner = lead * 0.14f;
@@ -185,16 +202,16 @@ public final class CompactContent extends Content {
         if (scoreA != null) {
             // split score: each half sits next to its team's logo, on either side of the hole
             owner.trailPaint.setColor(Colors.withAlpha(Colors.WHITE, alpha));
-            Paint.FontMetrics fm = owner.trailPaint.getFontMetrics();
+            owner.trailPaint.getFontMetrics(fm);
             float baseline = midY - ((fm.ascent + fm.descent) / 2.0f);
-            c.drawText(scoreA, leftLogoX + lead + owner.innerGap, baseline, owner.trailPaint);
-            c.drawText(scoreB, (rightLogoX - owner.innerGap) - owner.trailPaint.measureText(scoreB), baseline, owner.trailPaint);
+            owner.drawTime(c, item.key + "#scoreA", scoreA, owner.trailPaint, leftLogoX + lead + owner.innerGap, baseline, false);
+            owner.drawTime(c, item.key + "#scoreB", scoreB, owner.trailPaint, (rightLogoX - owner.innerGap) - DigitClock.width(owner.trailPaint, scoreB), baseline, false);
             return;
         }
         if (trailText != null) {
             owner.trailPaint.setColor(Colors.withAlpha(Colors.WHITE, alpha));
-            Paint.FontMetrics fm = owner.trailPaint.getFontMetrics();
-            c.drawText(trailText, (rightLogoX - owner.innerGap) - scoreW, midY - ((fm.ascent + fm.descent) / 2.0f), owner.trailPaint);
+            owner.trailPaint.getFontMetrics(fm);
+            owner.drawTime(c, item.key + "#score", trailText, owner.trailPaint, (rightLogoX - owner.innerGap) - scoreW, midY - ((fm.ascent + fm.descent) / 2.0f), false);
         }
     }
 }

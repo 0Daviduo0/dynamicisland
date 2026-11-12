@@ -19,6 +19,23 @@ public final class TimeFormat {
         return item.chronoMillis ? withHundredths(ms) : clock(Math.max(0L, ms));
     }
 
+    /** A tick this long after a boundary surely sees the clock moved on. */
+    private static final long TICK_SLACK_MS = 8;
+
+    /**
+     * Delay until just after {@code item}'s chronometer next changes its seconds, so a once-a-second redraw
+     * lands right after the digit flips instead of at an unrelated phase (which shows the change late and
+     * sometimes skips one, rolling two seconds in quick succession). Without a chronometer: the next wall
+     * clock second.
+     */
+    public static long millisToNextSecond(IslandItem item) {
+        if (item == null || item.chronoBase == 0) return 1000 - System.currentTimeMillis() % 1000 + TICK_SLACK_MS;
+        boolean monotonic = item.chronoUsesElapsedRealtime;
+        long now = monotonic ? android.os.SystemClock.elapsedRealtime() : System.currentTimeMillis();
+        long base = monotonic ? item.chronoElapsedBase : item.chronoBase;
+        return Math.floorMod(base - now, 1000L) + TICK_SLACK_MS;
+    }
+
     /** "1:05.37": the clock plus hundredths of a second. */
     public static String withHundredths(long ms) {
         long clamped=Math.max(0L,ms);

@@ -90,7 +90,7 @@ final class LivePreview extends FrameLayout {
         charging.title = activity.getString(R.string.island_charging);
         charging.batteryPercent = 75;
         charging.batteryCharging = true;
-        charging.accent = 0xFF30D158;
+        charging.accent = 0xFF3DB653;
         charging.trailing = IslandItem.Trailing.TEXT;
         charging.trailingText = "75%";
         charging.icon = GlyphIcon.battery(0.75f, true);

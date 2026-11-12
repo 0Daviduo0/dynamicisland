@@ -2,5 +2,9 @@
 <resources>
     <array name="xposed_scope">
         <item>com.android.systemui</item>
+        <item>com.sec.android.app.launcher</item>
+        <item>com.samsung.android.easysetup</item>
+        <item>com.samsung.android.app.sharelive</item>
+        <item>com.google.android.googlequicksearchbox</item>
     </array>
 </resources>

@@ -239,6 +239,102 @@ public final class MediaFx {
                 || now - accentStart < IslandView.FX_COLOR_MS || now - flipStart < IslandView.FLIP_MS;
     }
 
+    // ---- control animations: play/pause morph and the prev/next slide, kept here so they survive card rebuilds ----
+
+    /** 0 = play triangle, 1 = pause bars. */
+    public float playMorph = -1;
+    public long playMorphFrame;
+    public long skipNextAt = Long.MIN_VALUE / 2, skipPrevAt = Long.MIN_VALUE / 2;
+    /** Last playing state seen by the card and when it flipped (drives the official play/pause Lottie). */
+    public Boolean lastPlaying;
+    public long playToggleAt = Long.MIN_VALUE / 2;
+
+    // ---- One UI 9 player backdrop: the cover art filling the whole card, darkened, cross-faded on a track change ----
+
+    private static final float BACKDROP_FADE_MS = 420.0f;
+    private static final float BACKDROP_SCRIM = 0.42f;
+    private Bitmap backCur, backPrev;
+    private long backStart = Long.MIN_VALUE / 2;
+    private final Paint backPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint scrimPaint = new Paint();
+    private final android.graphics.Rect backSrc = new android.graphics.Rect();
+    private final android.graphics.RectF backDst = new android.graphics.RectF();
+    private android.graphics.LinearGradient scrimShader;
+    private float scrimH = -1;
+
+    /** Updates the backdrop art; a different bitmap cross-fades in over the previous one. */
+    public void syncBackdrop(IslandItem item, long now) {
+        Bitmap art = item.art;
+        if (art == backCur) return;
+        if (backCur != null && art != null) {
+            backPrev = backCur;
+            backStart = now;
+        } else {
+            backPrev = null;
+            backStart = Long.MIN_VALUE / 2;
+        }
+        backCur = art;
+    }
+
+    /** Whether there is cover art to fill the card with. */
+    public boolean hasBackdrop() {
+        return backCur != null && !backCur.isRecycled();
+    }
+
+    /** Whether the backdrop cross-fade is running. */
+    public boolean backdropAnimating(long now) {
+        return backPrev != null && now - backStart < BACKDROP_FADE_MS;
+    }
+
+    /**
+     * Draws the art centre-cropped over the card ({@code w} x {@code h} at {@code x}, {@code y}) with the stock
+     * player's dark scrim on top, so white text and controls stay readable on any cover.
+     */
+    public void drawBackdrop(Canvas c, float x, float y, float w, float h, float alpha, long now) {
+        float t = backPrev == null ? 1.0f : IslandView.clamp01((now - backStart) / BACKDROP_FADE_MS);
+        if (t >= 1.0f) backPrev = null;
+        if (backPrev != null) drawCover(c, backPrev, x, y, w, h, alpha);
+        drawCover(c, backCur, x, y, w, h, alpha * IslandView.easeInOut(t));
+        if (scrimShader == null || scrimH != h) {
+            scrimH = h;
+            scrimShader = new android.graphics.LinearGradient(0, 0, 0, h,
+                    new int[] {0x33000000, 0x00000000, 0x59000000}, new float[] {0f, 0.45f, 1f},
+                    android.graphics.Shader.TileMode.CLAMP);
+        }
+        scrimPaint.setShader(null);
+        scrimPaint.setColor(Colors.withAlpha(Colors.BLACK, BACKDROP_SCRIM * alpha));
+        c.drawRect(x, y, x + w, y + h, scrimPaint);
+        int save = c.save();
+        c.translate(x, y);
+        scrimPaint.setShader(scrimShader);
+        scrimPaint.setColor(Colors.BLACK);
+        scrimPaint.setAlpha(Math.round(255 * alpha));
+        c.drawRect(0, 0, w, h, scrimPaint);
+        scrimPaint.setShader(null);
+        c.restoreToCount(save);
+    }
+
+    private void drawCover(Canvas c, Bitmap art, float x, float y, float w, float h, float alpha) {
+        if (art == null || art.isRecycled() || alpha <= 0.002f) return;
+        if (art.getConfig() == Bitmap.Config.HARDWARE && !c.isHardwareAccelerated()) {
+            try {
+                Bitmap soft = art.copy(Bitmap.Config.ARGB_8888, false);
+                if (art == backCur) backCur = soft; else if (art == backPrev) backPrev = soft;
+                art = soft;
+            } catch (Throwable t) {
+                return;
+            }
+        }
+        float bw = art.getWidth(), bh = art.getHeight();
+        float scale = Math.max(w / bw, h / bh);
+        float sw = w / scale, sh = h / scale;
+        float sx = (bw - sw) / 2.0f, sy = (bh - sh) / 2.0f;
+        backSrc.set(Math.round(sx), Math.round(sy), Math.round(sx + sw), Math.round(sy + sh));
+        backDst.set(x, y, x + w, y + h);
+        backPaint.setAlpha(Math.round(255 * alpha));
+        c.drawBitmap(art, backSrc, backDst, backPaint);
+    }
+
     /** Advances the blob phases by the time since the previous frame; call once per drawn frame. */
     public void advance(long now) {
         // step by the display frame's own (vsync) time: uptime in milliseconds read while drawing jitters by

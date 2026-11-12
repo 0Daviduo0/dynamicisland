@@ -27,7 +27,7 @@ import java.util.Map;
  * "in call" notification. They get the same call card (caller, running time, end button).
  */
 public final class CallSource {
-    private static final int CALL_GREEN = 0xFF30D158;
+    private static final int CALL_GREEN = 0xFF3DB653;
 
     private final Context ctx;
     private final Handler main;

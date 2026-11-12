@@ -50,7 +50,7 @@ public final class RecordingBody extends CardBody {
         // Same precedence as TimerBody, including the user's accent on a primary action.
         button.bg = action.destructive ? Colors.DESTRUCTIVE_RED
                 : action.glyph != 0 ? (action.active ? Colors.WHITE : Colors.BUTTON_GRAY)
-                : item.actions.indexOf(action) == 0 ? Colors.blend(item.fillAccent(), Colors.BLACK, IslandView.PAUSED_SPEED)
+                : item.actions.indexOf(action) == 0 ? item.primaryButtonFill(IslandView.PAUSED_SPEED)
                 : Colors.BUTTON_GRAY;
         button.label = action.title == null ? null : action.title.toString();
         button.r.set(left, (h - diameter) / 2f, left + diameter, (h + diameter) / 2f);

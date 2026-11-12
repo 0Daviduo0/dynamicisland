@@ -69,7 +69,7 @@ public final class TimerBody extends CardBody {
                 b.bg = action.active ? Colors.WHITE : Colors.BUTTON_GRAY;
             } else if (!usedAccent && i == 0) {
                 // the primary (first) action gets the accent colour, darkened
-                b.bg = call ? Colors.CALL_GREEN : Colors.blend(item.fillAccent(), Colors.BLACK, IslandView.PAUSED_SPEED);
+                b.bg = call ? Colors.CALL_GREEN : item.primaryButtonFill(IslandView.PAUSED_SPEED);
                 usedAccent = true;
             } else {
                 b.bg = Colors.BUTTON_GRAY;

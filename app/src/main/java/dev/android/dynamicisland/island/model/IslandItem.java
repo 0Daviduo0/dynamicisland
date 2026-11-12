@@ -64,8 +64,42 @@ public final class IslandItem {
     /** Optional leading identity beside the compact icon; the trailing value keeps its own space. */
     public CharSequence compactLabel;
     /** Explicit module-owned presentation; third-party notification layouts keep DEFAULT. */
-    public enum EventLayout { DEFAULT, BATTERY, DEVICE, STATUS }
+    public enum EventLayout { DEFAULT, BATTERY, DEVICE, STATUS, BUDS, QUICK_SHARE, NOW }
+    /** Galaxy Buds product image in the earbuds' real colour, for {@link EventLayout#BUDS}; null otherwise. */
+    public android.graphics.Bitmap budsImage;
+    /** Expanded Buds card: the earbuds' name, battery of each side and of the case (-1 unknown), noise mode. */
+    public String budsName;
+    public int budsLeft = -1, budsRight = -1, budsCase = -1;
+    public CharSequence budsMode;
+    public Drawable budsModeIcon;
+    /** A phone call nobody has answered yet: the island opens its card while it rings. */
+    public boolean callRinging;
+    /** The card was opened by a noise mode change: the mode leads. */
+    public boolean budsModeFirst;
     public EventLayout eventLayout = EventLayout.DEFAULT;
+    /**
+     * {@link EventLayout#NOW}: the Samsung Now Bar style card shared by alarms, calendar events, the watch, the car and
+     * workouts. A header (glyph + text, the app icon at the right), the leading symbol or {@link #nowImage}, title and
+     * subtitle, a big value at the right ({@link #nowValue}, or the running chronometer when it is null; a battery ring
+     * when {@link #nowRing}), optional stats ({@link #nowStats}: value and label pairs) and the action buttons.
+     */
+    public CharSequence nowHeader;
+    public Drawable nowHeaderGlyph;
+    public String nowValue;
+    public CharSequence nowValueLabel;
+    public final List<String[]> nowStats = new ArrayList<>();
+    public Bitmap nowImage;
+    public boolean nowRing;
+    /** {@link EventLayout#QUICK_SHARE}: up to three pictures of what is shared (may be empty) and what it is. */
+    public List<Bitmap> sharePreviews = new ArrayList<>();
+    /** image, video, contact, wifi, link, text, audio, app or file. */
+    public String shareKind;
+    /** Short line about the content: a file name, a network name, a link's host, a text snippet. */
+    public CharSequence shareLabel;
+    /** Badge of a file without a picture (PDF, ZIP...), or null. */
+    public String shareBadge;
+    /** The share finished: the card shows a tick over the content. */
+    public boolean shareDone;
     public int batteryPercent = -1;
     public boolean batteryCharging;
     /** Third line of a card (ongoing-activity detail text). */
@@ -112,6 +146,17 @@ public final class IslandItem {
     /** Optional user accent for fills only; media, artwork and destructive controls retain their semantics. */
     public int customAccent;
     public int fillAccent() { return customAccent != 0 ? customAccent : accent; }
+    /**
+     * The one colour of symbols (icons, glyphs) and of the primary button: the user's theme accent (Material You or
+     * custom) when theming is on, white otherwise. App colours (a clock's orange, a buds app's blue) never reach them.
+     */
+    public int symbolTint() { return customAccent != 0 ? customAccent : 0xFFFFFFFF; }
+    /** Fill of a primary (non-semantic) button: the darkened theme accent when theming is on, neutral grey otherwise. */
+    public int primaryButtonFill(float darken) {
+        return customAccent != 0 ? dev.android.dynamicisland.island.graphics.Colors.blend(customAccent,
+                dev.android.dynamicisland.island.graphics.Colors.BLACK, darken)
+                : dev.android.dynamicisland.island.graphics.Colors.BUTTON_GRAY;
+    }
     /** Compact pill shows a pulsing dot instead of the icon (screen cast). */
     public boolean pulsingDot;
     /** Positive Samsung voice-recorder identity, distinct from screen recording. */
@@ -184,6 +229,8 @@ public final class IslandItem {
     public int primaryActionIndex = -1;
     /** Opens the owning app / notification when the card is tapped. */
     public PendingIntent contentIntent;
+    /** Runs instead of {@link #contentIntent} when the card is tapped (asks the owning app to open the content itself). */
+    public Runnable open;
 
     // ---- media (filled by the media source) ----------------------------------------------------
 
@@ -216,6 +263,8 @@ public final class IslandItem {
     /** Where the music plays (Bluetooth / wired / cast), null for the phone speaker. */
     public CharSequence mediaOutput;
     public Drawable mediaOutputIcon;
+    /** Glyph at the trailing edge for {@link Trailing#ICON}. */
+    public Drawable trailingIcon;
     /** Battery percent of the output device, -1 = unknown. */
     public int mediaOutputBattery = -1;
 
@@ -225,12 +274,15 @@ public final class IslandItem {
         TEXT,
         CHRONOMETER,
         PROGRESS_RING,
-        WAVEFORM
+        WAVEFORM,
+        /** {@link #trailingIcon}, tinted with the accent. */
+        ICON
     }
 
     /** Category of an item; its priority decides which item wins the island. Higher wins. */
     public enum Kind {
         CALL(100),
+        ALARM(98),
         PEEK(95),
         NAVIGATION(90),
         RECORDING(80),

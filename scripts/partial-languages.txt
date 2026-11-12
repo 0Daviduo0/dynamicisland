@@ -9,3 +9,4 @@
 # a string they lack is shown in English until a contributor adds it.
 pt-BR
 tr
+it

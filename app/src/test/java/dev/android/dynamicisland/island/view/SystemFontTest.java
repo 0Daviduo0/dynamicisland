@@ -40,7 +40,7 @@ public class SystemFontTest {
         assertEquals(Typeface.create(Typeface.SERIF,400,false),paints.body.getTypeface());
         assertEquals(Typeface.create(Typeface.SERIF,500,false),paints.button.getTypeface());
         assertEquals(Typeface.create(Typeface.SERIF,600,false),paints.trail.getTypeface());
-        assertEquals(Typeface.create(Typeface.SERIF,700,false),paints.title.getTypeface());
+        assertEquals(Typeface.create(Typeface.SERIF,600,false),paints.title.getTypeface());
         assertEquals(Typeface.create(Typeface.SERIF,600,false),paints.mediaTitle().getTypeface());
         assertEquals(Typeface.create(Typeface.SERIF,400,false),paints.mediaArtist().getTypeface());
         Object key=Fonts.key();

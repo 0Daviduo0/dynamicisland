@@ -8,7 +8,6 @@ import dev.android.dynamicisland.island.material.MaterialFrame;
 import dev.android.dynamicisland.island.material.FrostedSurface;
 import dev.android.dynamicisland.island.material.MaterialShape;
 import dev.android.dynamicisland.island.window.ShadeMaterialBackdrop;
-import android.os.SystemClock;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
@@ -19,6 +18,7 @@ import dev.android.dynamicisland.island.feedback.Haptics;
 import dev.android.dynamicisland.island.graphics.FramePacer;
 import dev.android.dynamicisland.island.model.IslandItem;
 import dev.android.dynamicisland.island.view.IslandView;
+import dev.android.dynamicisland.island.view.TimeFormat;
 import dev.android.dynamicisland.settings.ModuleSettings;
 import dev.android.dynamicisland.xposed.Refl;
 import dev.android.dynamicisland.xposed.XLog;
@@ -30,7 +30,6 @@ import dev.android.dynamicisland.xposed.XLog;
  * {@link CardRowState#fail}.
  */
 final class LiveCardView extends FrameLayout {
-    private static final long SECOND_MS = 1000;
 
     private final String key;
     private final CardRowState owner;
@@ -249,7 +248,7 @@ final class LiveCardView extends FrameLayout {
         if (everyFrame) {
             postOnAnimationDelayed(redraw, framePacer.delayMillis(ModuleSettings.limitFrameRate(), tracking || renderer.shadeButtonAnimating(), System.nanoTime()));
         } else if (everySecond) {
-            postDelayed(redraw, SECOND_MS - (SystemClock.uptimeMillis() % SECOND_MS));
+            postDelayed(redraw, TimeFormat.millisToNextSecond(item.hasChronometer() ? item : null));
         }
     }
 

@@ -21,7 +21,7 @@ import org.json.JSONObject;
  * strokes, trim, merge and round-corner modifiers, keyframes with bezier easing. Colours are ignored on
  * purpose: every shape is painted in the colour the island asks for.
  */
-final class LottiePlayer {
+public final class LottiePlayer {
     private static final PorterDuffXfermode MATTE_IN = new PorterDuffXfermode(PorterDuff.Mode.DST_IN);
     private static final PorterDuffXfermode MATTE_OUT = new PorterDuffXfermode(PorterDuff.Mode.DST_OUT);
 
@@ -117,9 +117,37 @@ final class LottiePlayer {
     }
 
     void draw(Canvas c, RectF dst, float elapsedMillis, int tint) {
+        drawFrame(c, dst, Math.min(outFrame - 0.01f, inFrame + (elapsedMillis * frameRate / 1000.0f)), tint);
+    }
+
+    /** Composition frame rate (frames per second). */
+    public float frameRate() {
+        return frameRate;
+    }
+
+    /**
+     * A Lottie {@code res/raw} animation of the host package (System UI's own media control animations), or null
+     * when the build has none.
+     */
+    public static LottiePlayer fromHostRaw(android.content.Context ctx, String name) {
+        try {
+            int id = ctx.getResources().getIdentifier(name, "raw", ctx.getPackageName());
+            if (id == 0) return null;
+            try (java.io.InputStream in = ctx.getResources().openRawResource(id)) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+                return parse(out.toString("UTF-8"));
+            }
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** Draws the composition at absolute {@code frame} into {@code dst}, every shape in {@code tint}. */
+    public void drawFrame(Canvas c, RectF dst, float frame, int tint) {
         shapesTaken = 0;
         listsTaken = 0;
-        float frame = Math.min(outFrame - 0.01f, inFrame + (elapsedMillis * frameRate / 1000.0f));
         color = tint;
         int save = c.save();
         c.translate(dst.left, dst.top);

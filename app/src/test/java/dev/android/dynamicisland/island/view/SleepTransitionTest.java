@@ -106,7 +106,7 @@ public class SleepTransitionTest {
             f.step(ms,48/ms);
             assertTrue("liquid geometry contracts while still opaque",f.pill().width()<width*.9f);
             assertTrue(f.view.visibleAlpha()>.95f);
-            f.finish();f.step(ms,1);
+            f.finish();f.step(34,1); // the next paced frame (ambient budget is 30 fps)
             assertTrue(f.view.isFullyHidden());
             assertFalse(f.view.materialBackdropRegion(new Rect()));
             assertFalse((boolean)ReflectionHelpers.getField(f.view,"frameScheduled"));

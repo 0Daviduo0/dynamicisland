@@ -34,7 +34,7 @@ public final class PrivacySource {
     private static final long NOTED_HOLD_MS = 5000;
     private static final int FIRST_APP_UID = 10000;
     private static final int ORANGE = 0xFFFF9F0A;
-    private static final int GREEN = 0xFF30D158;
+    private static final int GREEN = 0xFF3DB653;
     private static final int BLUE = 0xFF0A84FF;
 
     /** Packages whose sensor use is the phone / system itself and not worth an island. */

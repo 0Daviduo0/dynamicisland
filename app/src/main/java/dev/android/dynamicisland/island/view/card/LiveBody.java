@@ -76,8 +76,9 @@ public final class LiveBody extends CardBody {
         super(owner, item, w);
         pad = owner.dp(18.0f);
         boolean event = item.kind == IslandItem.Kind.EVENT;
-        boolean hasIcon = item.icon != null || item.cardIcon != null;
-        iconSize = event && !hasIcon ? 0 : owner.dp(event && !ModuleSettings.compactEventIcons() ? 40 : 22);
+        boolean hasIcon = item.icon != null;
+        // no app icon in the top right corner of a card: only an event's own symbol takes that place
+        iconSize = !event || !hasIcon ? 0 : owner.dp(!ModuleSettings.compactEventIcons() ? 40 : 22);
         logoSize = owner.dp(52.0f);
         progressTop = -1.0f;
         actionsTop = -1.0f;
@@ -203,7 +204,7 @@ public final class LiveBody extends CardBody {
             } else if (customColor != 0) {
                 b.bg = customColor | Colors.BLACK;
             } else if (i == item.primaryActionIndex) {
-                b.bg = Colors.blend(item.fillAccent(), Colors.BLACK, IslandView.PAUSED_SPEED);
+                b.bg = item.primaryButtonFill(IslandView.PAUSED_SPEED);
             } else {
                 b.bg = item.customAccent != 0 ? Colors.withAlpha(item.fillAccent(), android.graphics.Color.alpha(Colors.BUTTON_ACTION_FILL) / 255f) : Colors.BUTTON_ACTION_FILL;
             }
@@ -227,8 +228,8 @@ public final class LiveBody extends CardBody {
                 float room = ((w - (pad * 2.0f)) - (logoSize * 2.0f)) - owner.dp(16.0f);
                 String text = TextUtils.ellipsize(score, owner.bigTimePaint, room, TextUtils.TruncateAt.END).toString();
                 Paint.FontMetrics fm = owner.bigTimePaint.getFontMetrics();
-                float tw = owner.bigTimePaint.measureText(text);
-                c.drawText(text, ((w / 2.0f) + x) - (tw / 2.0f), midY - ((fm.ascent + fm.descent) / 2.0f), owner.bigTimePaint);
+                float tw = IslandView.timeWidth(owner.bigTimePaint, text);
+                owner.drawTime(c, item.key + "#score", text, owner.bigTimePaint, ((w / 2.0f) + x) - (tw / 2.0f), midY - ((fm.ascent + fm.descent) / 2.0f), false);
             }
         }
         float left = pad + x;
@@ -263,13 +264,11 @@ public final class LiveBody extends CardBody {
             owner.bodyPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a0));
             IslandView.drawLayout(c, detail, left, top + subY + subH + owner.dp(2.0f));
         }
-        if (!teams) {
+        if (!teams && iconSize > 0) {
             float iconX = ((w + x) - pad) - iconSize;
             float iconY = y + pad + dy0;
-            if (item.cardIcon != null) {
-                owner.drawDrawable(c, item.cardIcon, true, 0, iconX, iconY, iconSize, a0, iconSize * ICON_CORNER_RATIO);
-            } else if (item.icon != null) {
-                owner.drawDrawable(c, item.icon, item.iconIsImage, Colors.WHITE, iconX, iconY, iconSize, a0, iconSize * ICON_CORNER_RATIO);
+            if (item.icon != null) {
+                owner.drawDrawable(c, item.icon, item.iconIsImage, item.symbolTint(), iconX, iconY, iconSize, a0, iconSize * ICON_CORNER_RATIO);
             }
             if (item.profileBadge != null) {
                 // work-profile badge overlapping the icon's bottom right corner

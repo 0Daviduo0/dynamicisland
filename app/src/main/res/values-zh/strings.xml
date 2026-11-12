@@ -685,7 +685,7 @@
     <string name="perf_static_waveform">静态波形</string>
     <string name="perf_static_waveform_desc">波形保持静止，也不再为此分析音频。</string>
     <string name="perf_limit_frame_rate">限制帧率</string>
-    <string name="perf_limit_frame_rate_desc">环境动画最高 30 fps，触控反馈最高 60 fps。</string>
+    <string name="perf_limit_frame_rate_desc">环境动画最高 24 fps，触控反馈最高 60 fps。</string>
     <string name="perf_still_icons">静止的动画图标</string>
     <string name="perf_still_icons_desc">动画图标直接显示最终画面。</string>
     <string name="perf_covered">上方的低性能模式已应用以上全部项目。</string>

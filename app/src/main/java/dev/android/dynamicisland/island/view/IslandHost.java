@@ -64,9 +64,12 @@ public interface IslandHost {
     /** Audio level source that drives the visualiser, or null when none is available. */
     AudioLevels audio();
     default dev.android.dynamicisland.island.feedback.RecorderInput recordingAudio() { return null; }
+    default dev.android.dynamicisland.island.feedback.CallAudio callAudio() { return null; }
 
     /** Whether an item is currently minimized into the camera hole. */
     boolean hasMinimized();
+
+    default void onInsetStackChanged(boolean open) { }
 
     /** Switches the shown item; {@code direction} is -1 for the previous and +1 for the next one. */
     void onCycle(int direction);

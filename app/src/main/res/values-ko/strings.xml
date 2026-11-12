@@ -685,7 +685,7 @@
     <string name="perf_static_waveform">정지된 파형</string>
     <string name="perf_static_waveform_desc">파형이 움직이지 않고, 이를 위한 오디오 분석도 하지 않습니다.</string>
     <string name="perf_limit_frame_rate">프레임 레이트 제한</string>
-    <string name="perf_limit_frame_rate_desc">배경 애니메이션 30fps, 터치 반응 60fps까지만 그립니다.</string>
+    <string name="perf_limit_frame_rate_desc">배경 애니메이션 24fps, 터치 반응 60fps까지만 그립니다.</string>
     <string name="perf_still_icons">정지된 애니메이션 아이콘</string>
     <string name="perf_still_icons_desc">애니메이션 아이콘을 마지막 모습으로 보여 줍니다.</string>
     <string name="perf_covered">위의 저성능 모드가 이 항목을 모두 적용하고 있습니다.</string>

@@ -195,7 +195,7 @@ public final class HotspotSource {
         String size = Formatter.formatShortFileSize(ctx, bytes);
         item.subtitle = IslandText.get(ctx, "island_hotspot_devices", clients) + " · " + size + " · " + duration(seconds);
         item.icon = GlyphIcon.of(GlyphIcon.Kind.HOTSPOT);
-        item.accent = 0xFF30D158;
+        item.accent = 0xFF3DB653;
         item.trailing = IslandItem.Trailing.TEXT;
         item.trailingText = size;
         item.postTime = startedAt;

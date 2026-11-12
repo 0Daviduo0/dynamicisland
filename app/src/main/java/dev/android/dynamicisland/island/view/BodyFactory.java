@@ -24,6 +24,12 @@ final class BodyFactory {
      * @param inShade true for cards drawn in the notification shade, which cannot host a RemoteViews layer
      */
     CardBody create(IslandItem it, float width, boolean inShade) {
+        if (it.eventLayout == IslandItem.EventLayout.QUICK_SHARE) {
+            return new dev.android.dynamicisland.island.view.card.QuickShareBody(view, it, width);
+        }
+        if (dev.android.dynamicisland.island.view.card.NowBody.supports(it)) {
+            return new dev.android.dynamicisland.island.view.card.NowBody(view, it, width);
+        }
         if (it.isMedia) {
             return new MediaBody(view, it, width);
         }
@@ -43,6 +49,9 @@ final class BodyFactory {
             return new TimerBody(view, it, width);
         }
         if (it.actions.isEmpty() && it.remoteView == null) {
+            if (dev.android.dynamicisland.island.view.card.BudsBody.supports(it)) {
+                return new dev.android.dynamicisland.island.view.card.BudsBody(view, it, width);
+            }
             if (it.eventLayout == IslandItem.EventLayout.BATTERY && it.batteryPercent >= 0) {
                 return new dev.android.dynamicisland.island.view.card.BatteryBody(view, it, width);
             }

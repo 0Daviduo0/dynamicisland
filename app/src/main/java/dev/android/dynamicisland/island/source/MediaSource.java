@@ -158,6 +158,38 @@ public final class MediaSource {
     }
 
     /** Existing callers already supply their foreground decision; null means no filtering. */
+    /** Small icon of each package's media notification, from the notification snapshot. */
+    private static final java.util.Map<String, android.graphics.drawable.Icon> SMALL_ICONS = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<android.graphics.drawable.Icon, Drawable> SMALL_DRAWABLES =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /** Remembers the small icon of every media notification (one carrying a media session token). */
+    public static void noteNotifications(List<android.service.notification.StatusBarNotification> all) {
+        for (android.service.notification.StatusBarNotification sbn : all) {
+            try {
+                android.app.Notification n = sbn == null ? null : sbn.getNotification();
+                if (n == null || n.extras == null || !n.extras.containsKey(android.app.Notification.EXTRA_MEDIA_SESSION)) continue;
+                if (n.getSmallIcon() != null) SMALL_ICONS.put(sbn.getPackageName(), n.getSmallIcon());
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private Drawable smallIcon(String pkg) {
+        android.graphics.drawable.Icon icon = pkg == null ? null : SMALL_ICONS.get(pkg);
+        if (icon == null) return null;
+        Drawable d = SMALL_DRAWABLES.get(icon);
+        if (d == null) {
+            try {
+                d = icon.loadDrawable(ctx);
+            } catch (Throwable t) {
+                d = null;
+            }
+            if (d != null) SMALL_DRAWABLES.put(icon, d);
+        }
+        return d == null ? null : d.getConstantState() != null ? d.getConstantState().newDrawable().mutate() : d;
+    }
+
     public void collect(List<IslandItem> out, String foreground, Set<String> hiddenByForeground, Collection<String> packages) {
         collect(out, foreground, true, hiddenByForeground, packages);
     }
@@ -532,7 +564,10 @@ public final class MediaSource {
             it.mediaPalette = palette;
             it.accent = palette == null ? -1 : palette.primary;
             it.appIcon = appIcon;
-            if (appIcon instanceof AdaptiveIconDrawable) {
+            Drawable small = smallIcon(pkg);
+            if (small != null) {
+                it.appGlyph = small; // the media notification's small icon, the glyph the stock player shows
+            } else if (appIcon instanceof AdaptiveIconDrawable) {
                 Drawable monochrome = ((AdaptiveIconDrawable) appIcon).getMonochrome();
                 if (monochrome != null) {
                     it.appGlyph = monochrome.mutate();
