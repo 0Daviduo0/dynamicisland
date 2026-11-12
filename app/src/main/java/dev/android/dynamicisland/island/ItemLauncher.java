@@ -18,15 +18,21 @@ final class ItemLauncher {
     private final Haptics haptics;
     /** The island view to grow the launch animation from; may yield null. */
     private final Supplier<View> anchor;
+    /** Keeps the island window full screen while an app grows out of it. */
+    private final java.util.function.Consumer<Boolean> launching;
 
-    ItemLauncher(Context ctx, Haptics haptics, Supplier<View> anchor) {
+    ItemLauncher(Context ctx, Haptics haptics, Supplier<View> anchor, java.util.function.Consumer<Boolean> launching) {
         this.ctx = ctx;
         this.haptics = haptics;
         this.anchor = anchor;
+        this.launching = launching;
     }
 
     void open(IslandItem item, RectF from) {
         try {
+            if (item.open == null && launchAnimated(item, from)) {
+                return;
+            }
             Bundle options = launchOptions(from);
             if (item.open != null) {
                 item.open.run();
@@ -43,6 +49,22 @@ final class ItemLauncher {
         } catch (Throwable t) {
             XLog.e("open item failed", t);
         }
+    }
+
+    /** Grows the app out of the island with System UI's launch animator; false when that is not possible. */
+    private boolean launchAnimated(IslandItem item, RectF from) {
+        if (from == null) {
+            return false;
+        }
+        Intent launch = null;
+        if (item.contentIntent == null && item.packageName != null) {
+            launch = ctx.getPackageManager().getLaunchIntentForPackage(item.packageName);
+            if (launch == null) {
+                return false;
+            }
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        }
+        return dev.android.dynamicisland.island.window.AppLaunchAnimator.launch(anchor.get(), from, item.contentIntent, launch, launching);
     }
 
     void runAction(IslandItem.Action action) {

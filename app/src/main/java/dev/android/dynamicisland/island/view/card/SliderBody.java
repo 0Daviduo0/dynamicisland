@@ -63,6 +63,18 @@ public class SliderBody extends CardBody {
         h = trackTop + trackH + pad;
     }
 
+    /** A slider placed by a subclass: no title and no button, the track at {@code trackTop}, {@code trackH} tall. */
+    SliderBody(IslandView owner, IslandItem item, float w, float trackTop, float trackH) {
+        super(owner, item, w);
+        pad = owner.dp(18.0f);
+        label = null;
+        this.trackH = trackH;
+        this.trackTop = trackTop;
+        trackLeft = pad;
+        trackRight = w - pad;
+        h = trackTop + trackH + pad;
+    }
+
     /** Whether ({@code lx}, {@code ly}) in body coordinates is on the slider and the item has one. */
     public boolean onSlider(float lx, float ly) {
         float extra = owner.dp(HIT_EXTRA_DP);
@@ -149,11 +161,12 @@ public class SliderBody extends CardBody {
 
     /** The item's icon at the start of the bar, on the part that is always filled. */
     private void drawIcon(Canvas c, float left, float top, float height, float alpha) {
-        if (item.icon == null) {
+        android.graphics.drawable.Drawable icon = sliderIcon();
+        if (icon == null) {
             return;
         }
-        float size = owner.dp(ICON_DP);
-        owner.drawDrawable(c, item.icon, false, ICON_ON_FILL, left + ((height - size) / 2.0f), top + ((height - size) / 2.0f), size, alpha, 0.0f);
+        float size = Math.min(owner.dp(ICON_DP), height * 0.6f);
+        owner.drawDrawable(c, icon, false, ICON_ON_FILL, left + ((height - size) / 2.0f), top + ((height - size) / 2.0f), size, alpha, 0.0f);
     }
 
     /** The small name of what the card controls, at the top left. */
@@ -166,7 +179,13 @@ public class SliderBody extends CardBody {
         c.drawText(label, x + pad, y + pad + (owner.dp(HEADER_BUTTON_DP) / 2.0f) - ((fm.ascent + fm.descent) / 2.0f), owner.mediaTitlePaint());
     }
 
-    private String valueText(float step) {
+    /** The glyph at the start of the bar. */
+    android.graphics.drawable.Drawable sliderIcon() {
+        return item.icon;
+    }
+
+    /** The number at the end of the bar for {@code step}, or null for none. */
+    String valueText(float step) {
         return item.sliderTrailing != null ? item.sliderTrailing.apply(step) : (item.trailingText == null ? null : item.trailingText.toString());
     }
 
@@ -197,7 +216,7 @@ public class SliderBody extends CardBody {
         c.restore();
     }
 
-    private void drawSlider(Canvas c, float x, float y, float alpha) {
+    void drawSlider(Canvas c, float x, float y, float alpha) {
         boolean dragged = owner.sliderBody == this;
         float value = dragged ? owner.sliderFraction : settledValue();
         float left = x + trackLeft;

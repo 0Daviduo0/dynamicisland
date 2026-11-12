@@ -329,9 +329,13 @@ final class StackPainter {
             } else if (c.leaving && !ModuleSettings.legacyAnimation()) {
                 // a leaving card keeps its content at its true size, centred, and the shrinking card clips it
                 drawBody(c.body, canvas, r.left + ((r.width() - c.body.w) / 2.0f), r.top, alpha, elapsed);
-            } else {
+            } else if (ModuleSettings.legacyAnimation()) {
                 canvas.scale(r.width() / c.body.w, r.height() / c.body.h, r.left, r.top);
                 drawBody(c.body, canvas, r.left, r.top, alpha, elapsed);
+            } else {
+                // the content keeps its true size, hung from the card's top, and the card opening downwards
+                // uncovers it: stretching it to the growing shape made every element squash and bounce back
+                drawBody(c.body, canvas, r.centerX() - (c.body.w / 2.0f), r.top, alpha, elapsed);
             }
         } finally {
             canvas.restoreToCount(contentSave);

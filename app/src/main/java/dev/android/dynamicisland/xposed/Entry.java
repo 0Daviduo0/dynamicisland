@@ -14,6 +14,7 @@ public final class Entry implements IXposedHookLoadPackage {
     private static boolean installed;
     private static boolean easySetupInstalled;
     private static boolean quickShareInstalled;
+    private static boolean launcherInstalled;
 
     /** Path of the apk this code was loaded from (tells an old install from the new one), or "?". */
     private static String moduleApk() {
@@ -40,6 +41,17 @@ public final class Entry implements IXposedHookLoadPackage {
                     dev.android.dynamicisland.xposed.hooks.QuickShareHooks.install(lpparam.classLoader);
                 } catch (Throwable t) {
                     XLog.e("quick share hooks failed", t);
+                }
+            }
+            return;
+        }
+        if (dev.android.dynamicisland.xposed.hooks.LauncherHooks.PACKAGE.equals(lpparam.packageName)) {
+            if (!launcherInstalled && lpparam.packageName.equals(lpparam.processName)) {
+                launcherInstalled = true;
+                try {
+                    dev.android.dynamicisland.xposed.hooks.LauncherHooks.install(lpparam.classLoader);
+                } catch (Throwable t) {
+                    XLog.e("launcher hooks failed", t);
                 }
             }
             return;

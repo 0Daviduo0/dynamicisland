@@ -9,6 +9,7 @@ import android.widget.RemoteViews;
 import dev.android.dynamicisland.island.detect.IconContrast;
 import dev.android.dynamicisland.island.graphics.Colors;
 import dev.android.dynamicisland.island.model.IslandItem;
+import dev.android.dynamicisland.island.view.TimeFormat;
 import dev.android.dynamicisland.island.view.IslandView;
 import dev.android.dynamicisland.xposed.Refl;
 import dev.android.dynamicisland.xposed.hooks.HideDuplicated;
@@ -36,6 +37,10 @@ final class OaCardBuilder {
     private final Map<Object, IslandItem> built = new WeakHashMap<>();
     /** Chronometer base per item key, so a paused stopwatch can still show its exact elapsed time. */
     private final Map<String, Long> stopwatchBases = new HashMap<>();
+    /** Longest remaining time seen per timer key: its duration, so the card can draw how much is left. */
+    private final Map<String, Long> timerTotals = new HashMap<>();
+    /** Laps per stopwatch key, newest first: the Clock app only says "Lap N", so their times are noted here. */
+    private final Map<String, List<IslandItem.Lap>> lapLogs = new HashMap<>();
 
     OaCardBuilder(IconLoader icons, OaViews views, ProgressBinder progress) {
         this.icons = icons;
@@ -61,6 +66,20 @@ final class OaCardBuilder {
                 keys.add(item.key);
             }
             stopwatchBases.keySet().retainAll(keys);
+        }
+        if (timerTotals.size() > STOPWATCH_PRUNE_SIZE) {
+            Set<String> keys = new HashSet<>();
+            for (IslandItem item : liveItems) {
+                keys.add(item.key);
+            }
+            timerTotals.keySet().retainAll(keys);
+        }
+        if (lapLogs.size() > STOPWATCH_PRUNE_SIZE) {
+            Set<String> keys = new HashSet<>();
+            for (IslandItem item : liveItems) {
+                keys.add(item.key);
+            }
+            lapLogs.keySet().retainAll(keys);
         }
     }
 
@@ -104,6 +123,7 @@ final class OaCardBuilder {
         progress.bindBar(it, data, extras, pkg);
         bindTrailing(it, a, chrono, chipScore, (CharSequence) Refl.get(data, "mExpandedChipText"),
                 extras.getCharSequence("android.shortCriticalText"));
+        bindClockKind(it, n, pkg);
 
         it.appName = (String) Refl.get(data, "mAppName");
         String title = firstFilled((String) Refl.get(data, "mPrimaryInfo"), (String) Refl.get(data, "mNowbarPrimaryInfo"),
@@ -126,6 +146,7 @@ final class OaCardBuilder {
         }
 
         bindDescription(it, data, subtitle, pkg);
+        bindLaps(it, a.sbn);
         Object when = Refl.get(data, "mWhen");
         if (when instanceof Long && (Long) when > 0) {
             it.whenMillis = (Long) when;
@@ -160,6 +181,7 @@ final class OaCardBuilder {
         if (color == 0 && n != null) {
             color = n.color;
         }
+        it.chipBg = color;
         it.accent = color == 0 ? -1 : Colors.readableOnBlack(color);
     }
 
@@ -213,6 +235,90 @@ final class OaCardBuilder {
                 showText(it, primary);
             }
         }
+    }
+
+    /** Samsung Clock timers and stopwatches get the Clock app's own card layout. */
+    private void bindClockKind(IslandItem it, Notification n, String pkg) {
+        if (isStopwatch(n)) {
+            it.clockKind = IslandItem.CLOCK_STOPWATCH;
+            return;
+        }
+        String channel = n == null ? null : n.getChannelId();
+        boolean timer = it.chronoCountDown || (channel != null && channel.contains("timer"));
+        if (!timer || !"com.sec.android.app.clockpackage".equals(pkg)) {
+            return;
+        }
+        it.clockKind = IslandItem.CLOCK_TIMER;
+        long left = TimeFormat.remainingMillis(it);
+        if (left == Long.MIN_VALUE) {
+            return;
+        }
+        // whole seconds, rounded up as the Clock app does, so a timer seen at its start reads full
+        long seconds = (Math.max(0L, left) + 999) / 1000 * 1000;
+        Long seen = timerTotals.get(it.key);
+        long total = seen == null ? seconds : Math.max(seen, seconds);
+        timerTotals.put(it.key, total);
+        it.timerTotalMs = total;
+    }
+
+    /**
+     * Notes a new stopwatch lap when the Clock app's "Lap N" line moves on: its total is the stopwatch time when that
+     * update was posted, its own time the difference from the lap before (unknown when laps were missed).
+     */
+    private void bindLaps(IslandItem it, StatusBarNotification sbn) {
+        if (it.clockKind != IslandItem.CLOCK_STOPWATCH) {
+            return;
+        }
+        int number = lapNumber(it.subtitle);
+        if (number <= 0) {
+            lapLogs.remove(it.key);
+            return;
+        }
+        List<IslandItem.Lap> log = lapLogs.get(it.key);
+        boolean firstSight = log == null;
+        if (log == null || (!log.isEmpty() && number < log.get(0).number)) {
+            log = new java.util.ArrayList<>();
+            lapLogs.put(it.key, log);
+        }
+        IslandItem.Lap last = log.isEmpty() ? null : log.get(0);
+        if (last == null || number > last.number) {
+            Long base = it.chronoBase != 0 ? Long.valueOf(it.chronoBase) : stopwatchBases.get(it.key);
+            long at = sbn != null ? sbn.getPostTime() : System.currentTimeMillis();
+            long total = base == null ? -1 : Math.max(0, at - base);
+            long split = -1;
+            if (total >= 0 && number == 1) {
+                split = total;
+            } else if (total >= 0 && last != null && last.number == number - 1 && last.totalMs >= 0) {
+                split = total - last.totalMs;
+            }
+            // a lap that was already there when the island first saw this stopwatch does not slide in
+            long seenAt = firstSight && number > 1 ? 0 : IslandView.now();
+            log.add(0, new IslandItem.Lap(number, total, split, seenAt));
+            while (log.size() > 4) {
+                log.remove(log.size() - 1);
+            }
+        }
+        it.laps = new java.util.ArrayList<>(log);
+    }
+
+    /** The first number in the Clock app's lap line ("Lap 3", "Giro 3 · In pausa"); 0 for "No laps". */
+    static int lapNumber(CharSequence line) {
+        if (line == null) {
+            return 0;
+        }
+        int value = -1;
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+            if (ch >= '0' && ch <= '9') {
+                value = (value < 0 ? 0 : value * 10) + (ch - '0');
+                if (value > 100000) {
+                    return 0;
+                }
+            } else if (value >= 0) {
+                break;
+            }
+        }
+        return Math.max(0, value);
     }
 
     private static void showText(IslandItem it, CharSequence text) {

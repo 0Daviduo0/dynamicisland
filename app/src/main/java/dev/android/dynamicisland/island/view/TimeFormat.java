@@ -19,6 +19,37 @@ public final class TimeFormat {
         return item.chronoMillis ? withHundredths(ms) : clock(Math.max(0L, ms));
     }
 
+    /**
+     * Signed time left on a countdown (negative once it ran out), from the running chronometer or a frozen
+     * clock text ("9:41", "1:02:03"); {@code Long.MIN_VALUE} when neither is there.
+     */
+    public static long remainingMillis(IslandItem item) {
+        if (item.trailing == IslandItem.Trailing.CHRONOMETER && item.chronoCountDown) {
+            boolean mono = item.chronoUsesElapsedRealtime;
+            long now = mono ? android.os.SystemClock.elapsedRealtime() : System.currentTimeMillis();
+            return (mono ? item.chronoElapsedBase : item.chronoBase) - now;
+        }
+        if (item.trailing == IslandItem.Trailing.TEXT && item.trailingText != null) {
+            return parseClock(item.trailingText.toString());
+        }
+        return Long.MIN_VALUE;
+    }
+
+    /** "9:41" / "-0:12" / "1:02:03" to milliseconds; {@code Long.MIN_VALUE} for anything else. */
+    public static long parseClock(String text) {
+        String t = text.trim();
+        if (!CLOCK_TEXT.matcher(t).matches()) return Long.MIN_VALUE;
+        boolean negative = t.startsWith("-");
+        if (negative) t = t.substring(1);
+        int dot = t.indexOf('.');
+        long centis = dot < 0 ? 0 : Long.parseLong(t.substring(dot + 1));
+        if (dot >= 0) t = t.substring(0, dot);
+        long seconds = 0;
+        for (String part : t.split(":")) seconds = seconds * 60 + Long.parseLong(part);
+        long ms = seconds * 1000 + centis * 10;
+        return negative ? -ms : ms;
+    }
+
     /** A tick this long after a boundary surely sees the clock moved on. */
     private static final long TICK_SLACK_MS = 8;
 

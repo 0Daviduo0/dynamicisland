@@ -225,6 +225,11 @@ public final class MediaSource {
         }
     }
 
+    /** True while there is a player the island would show: one playing, or paused within the timeout. */
+    public boolean hasPlayer() {
+        return pickSession(SystemClock.uptimeMillis()) != null;
+    }
+
     private void cancelForegroundRetry() {
         main.removeCallbacks(foregroundRetry);
         foregroundRetryToken = null;
@@ -364,6 +369,9 @@ public final class MediaSource {
         IslandItem card;
         private Bitmap paletteArt;
         private ArtworkPalette palette;
+        /** Seed for the stock wave theme: the art's (or, without art, the app icon's) primary colour. */
+        private Object seedSource;
+        private int waveSeed;
 
         Session(MediaController controller) {
             this.controller = controller;
@@ -551,6 +559,12 @@ public final class MediaSource {
                         ? CoverAccent.palette(art) : cover.palette;
             }
             Drawable appIcon = assets.icon(pkg);
+            Object seedFrom = art != null ? art : appIcon;
+            if (seedFrom != seedSource) {
+                seedSource = seedFrom;
+                waveSeed = WaveSeed.of(art, appIcon, palette == null ? 0 : palette.primary);
+            }
+            it.mediaWaveSeed = waveSeed;
             it.art = art;
             if (art != null) {
                 it.icon = new BitmapDrawable(ctx.getResources(), art);

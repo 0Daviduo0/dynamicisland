@@ -72,6 +72,17 @@ public final class IslandItem {
     public int budsLeft = -1, budsRight = -1, budsCase = -1;
     public CharSequence budsMode;
     public Drawable budsModeIcon;
+    /**
+     * Noise control of the expanded Buds card: the current mode (one of {@link #BUDS_MODES}), the glyph and name of
+     * each mode in that order, and the call that switches mode; null setter = no controls.
+     */
+    public static final String[] BUDS_MODES = {"off", "ambient", "adaptive", "anc"};
+    public String budsNoise;
+    public Drawable[] budsModeIcons;
+    public CharSequence[] budsModeLabels;
+    public java.util.function.Consumer<String> budsSetNoise;
+    /** A mode was asked for and the earbuds have not confirmed it yet: the card shows it loading and takes no other. */
+    public boolean budsBusy;
     /** A phone call nobody has answered yet: the island opens its card while it rings. */
     public boolean callRinging;
     /** The card was opened by a noise mode change: the mode leads. */
@@ -197,6 +208,31 @@ public final class IslandItem {
     public boolean chronoMillis;
     /** 0 none, 1 chronometer replaces the primary line, 2 it replaces the secondary line. */
     public int chronoPosition;
+    /** Samsung Clock card: {@link #CLOCK_NONE}, {@link #CLOCK_TIMER} or {@link #CLOCK_STOPWATCH}. */
+    public int clockKind;
+    public static final int CLOCK_NONE = 0, CLOCK_TIMER = 1, CLOCK_STOPWATCH = 2;
+    /** Timer: the longest remaining time seen for it (its duration when seen from the start); 0 = unknown. */
+    public long timerTotalMs;
+    /** Stopwatch laps seen so far, newest first (at most four: three shown plus one scrolling out). */
+    public java.util.List<Lap> laps = java.util.Collections.emptyList();
+
+    /** One stopwatch lap: its number, the total time when it was taken and the lap's own time (-1 = unknown). */
+    public static final class Lap {
+        public final int number;
+        public final long totalMs;
+        public final long splitMs;
+        /** {@code IslandView.now()} when the island first saw it, 0 for laps that were already there. */
+        public final long seenAt;
+
+        public Lap(int number, long totalMs, long splitMs, long seenAt) {
+            this.number = number;
+            this.totalMs = totalMs;
+            this.splitMs = splitMs;
+            this.seenAt = seenAt;
+        }
+    }
+    /** The chip / card icon background the app asked for, as sent (0 = none). */
+    public int chipBg;
 
     // ---- progress bar --------------------------------------------------------------------------
 
@@ -241,6 +277,8 @@ public final class IslandItem {
     public Bitmap art;
     /** Immutable artwork gradient; null means renderers should fall back to {@link #accent}. */
     public ArtworkPalette mediaPalette;
+    /** Colour the stock One UI player would theme its wave from (see {@code WaveTheme.forSeed}). */
+    public int mediaWaveSeed;
     /** Launcher icon of the playing app. */
     public Drawable appIcon;
     /** Monochrome version of {@link #appIcon} for the compact pill, may be null. */

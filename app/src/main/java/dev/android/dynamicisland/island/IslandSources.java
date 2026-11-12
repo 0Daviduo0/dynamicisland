@@ -88,6 +88,7 @@ final class IslandSources {
         events = new EventSource(ctx, main, onChange);
         buds = new dev.android.dynamicisland.island.source.BudsSource(ctx, main, onChange);
         events.onAudioConnected = buds::onAudioConnected;
+        buds.setPlayerCheck(media::hasPlayer);
         charging = new ChargingSource(ctx, main, onChange);
         headset = new HeadsetSource(ctx, main, onChange);
         hotspot = new HotspotSource(ctx, main, onChange);

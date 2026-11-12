@@ -100,7 +100,7 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
             };
         }, dev.android.dynamicisland.xposed.hooks.SystemUiHooks::shadeFraction);
         placement.setOnUnlocked(sources.unlock::onUnlocked);
-        launcher = new ItemLauncher(ctx, haptics, placement::view);
+        launcher = new ItemLauncher(ctx, haptics, placement::view, placement::setLaunching);
         shadeDrag = new ShadeDragRelay(ctx, placement::statusBar);
         Diagnostics.live("system ui memory",
                 new dev.android.dynamicisland.xposed.MemoryReport(dev.android.dynamicisland.island.window.IslandWindow::materialBufferStats)::line);

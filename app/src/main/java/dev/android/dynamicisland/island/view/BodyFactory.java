@@ -33,8 +33,15 @@ final class BodyFactory {
         if (it.isMedia) {
             return new MediaBody(view, it, width);
         }
+        if (dev.android.dynamicisland.island.view.card.ClockBody.supports(it)) {
+            return new dev.android.dynamicisland.island.view.card.ClockBody(view, it, width);
+        }
         if (it.torchControls && dev.android.dynamicisland.settings.ModuleSettings.torchBeamStyle()) {
             return new dev.android.dynamicisland.island.view.card.TorchBeamBody(view, it, width);
+        }
+        if (dev.android.dynamicisland.island.view.card.BudsBody.supports(it)) {
+            // ahead of the plain slider: the Buds card carries its own noise level slider
+            return new dev.android.dynamicisland.island.view.card.BudsBody(view, it, width);
         }
         if (it.sliderChange != null) {
             return new SliderBody(view, it, width);
@@ -49,9 +56,6 @@ final class BodyFactory {
             return new TimerBody(view, it, width);
         }
         if (it.actions.isEmpty() && it.remoteView == null) {
-            if (dev.android.dynamicisland.island.view.card.BudsBody.supports(it)) {
-                return new dev.android.dynamicisland.island.view.card.BudsBody(view, it, width);
-            }
             if (it.eventLayout == IslandItem.EventLayout.BATTERY && it.batteryPercent >= 0) {
                 return new dev.android.dynamicisland.island.view.card.BatteryBody(view, it, width);
             }

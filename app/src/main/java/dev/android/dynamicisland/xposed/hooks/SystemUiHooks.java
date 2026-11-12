@@ -80,6 +80,8 @@ public final class SystemUiHooks {
         runGroup("calls", () -> hookCalls(cl));
         runGroup("cast", () -> hookCast(cl));
         runGroup("flashlight", () -> hookFlashlight(cl));
+        runGroup("activity starter", () -> Refl.hookConstructors(cl, SUI + ".statusbar.phone.ActivityStarterImpl",
+                SafeHook.after("activity starter ctor", p -> dev.android.dynamicisland.island.window.AppLaunchAnimator.setStarter(p.thisObject))));
         runGroup("signals", () -> hookSignals(cl));
         runGroup("wakefulness", () -> WakefulnessHooks.install(cl));
         runGroup("unlock notice", () -> UnlockHooks.install(cl));

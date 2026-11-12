@@ -252,7 +252,8 @@ public final class MediaFx {
     // ---- One UI 9 player backdrop: the cover art filling the whole card, darkened, cross-faded on a track change ----
 
     private static final float BACKDROP_FADE_MS = 420.0f;
-    private static final float BACKDROP_SCRIM = 0.42f;
+    /** Stock scrim (one_ui_90_sec_qs_media_scrim): radial #4D -> #B2 black, then linear clear -> #B2 downwards. */
+    private static final int SCRIM_RADIAL_CENTER = 0x4D000000, SCRIM_EDGE = 0xB2000000;
     private Bitmap backCur, backPrev;
     private long backStart = Long.MIN_VALUE / 2;
     private final Paint backPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -260,7 +261,8 @@ public final class MediaFx {
     private final android.graphics.Rect backSrc = new android.graphics.Rect();
     private final android.graphics.RectF backDst = new android.graphics.RectF();
     private android.graphics.LinearGradient scrimShader;
-    private float scrimH = -1;
+    private android.graphics.RadialGradient scrimRadial;
+    private float scrimW = -1, scrimH = -1;
 
     /** Updates the backdrop art; a different bitmap cross-fades in over the previous one. */
     public void syncBackdrop(IslandItem item, long now) {
@@ -295,20 +297,22 @@ public final class MediaFx {
         if (t >= 1.0f) backPrev = null;
         if (backPrev != null) drawCover(c, backPrev, x, y, w, h, alpha);
         drawCover(c, backCur, x, y, w, h, alpha * IslandView.easeInOut(t));
-        if (scrimShader == null || scrimH != h) {
+        if (scrimShader == null || scrimH != h || scrimW != w) {
             scrimH = h;
-            scrimShader = new android.graphics.LinearGradient(0, 0, 0, h,
-                    new int[] {0x33000000, 0x00000000, 0x59000000}, new float[] {0f, 0.45f, 1f},
+            scrimW = w;
+            scrimShader = new android.graphics.LinearGradient(0, 0, 0, h, 0x00000000, SCRIM_EDGE,
                     android.graphics.Shader.TileMode.CLAMP);
+            // GradientDrawable: gradientRadius 100%p = the shorter side of the bounds, centred
+            scrimRadial = new android.graphics.RadialGradient(w / 2, h / 2, Math.max(1f, Math.min(w, h)),
+                    SCRIM_RADIAL_CENTER, SCRIM_EDGE, android.graphics.Shader.TileMode.CLAMP);
         }
-        scrimPaint.setShader(null);
-        scrimPaint.setColor(Colors.withAlpha(Colors.BLACK, BACKDROP_SCRIM * alpha));
-        c.drawRect(x, y, x + w, y + h, scrimPaint);
         int save = c.save();
         c.translate(x, y);
-        scrimPaint.setShader(scrimShader);
         scrimPaint.setColor(Colors.BLACK);
         scrimPaint.setAlpha(Math.round(255 * alpha));
+        scrimPaint.setShader(scrimRadial);
+        c.drawRect(0, 0, w, h, scrimPaint);
+        scrimPaint.setShader(scrimShader);
         c.drawRect(0, 0, w, h, scrimPaint);
         scrimPaint.setShader(null);
         c.restoreToCount(save);

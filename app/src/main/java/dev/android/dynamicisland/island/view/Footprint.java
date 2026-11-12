@@ -16,6 +16,8 @@ final class Footprint {
     private final Shapes shapes;
     private final RectF pill = new RectF();
     private final RectF other = new RectF();
+    /** Width the pill covered while last compact; an opened card covers no more of the bar than that. */
+    private float compactW;
 
     Footprint(IslandView view, IslandHost host, Metrics m, Scene scene, Shapes shapes) {
         this.view = view;
@@ -28,6 +30,20 @@ final class Footprint {
     /** Union of the pill, the bubble and every card that overlaps the pill's row. */
     void coverage(RectF out) {
         shapes.main(out);
+        if (scene.mode == Mode.EXPANDED) {
+            // an opened card floats over the bar on its own: only the compact pill it grew from keeps icons hidden
+            float half = Math.min(out.width(), compactW) / 2.0f;
+            out.set(m.cx - half, m.cy - (m.pillH / 2.0f), m.cx + half, m.cy + (m.pillH / 2.0f));
+            return;
+        }
+        if (scene.iMode == null && scene.mode == Mode.COMPACT) {
+            // shrinking back from a card: cover only the width it settles at, not the card it leaves
+            float target = scene.springs.width.target();
+            if (target > 0.0f && out.width() > target) {
+                out.inset((out.width() - target) / 2.0f, 0.0f);
+            }
+        }
+        compactW = out.width();
         shapes.shadePill(out, pill);
         out.union(pill);
         if (scene.springs.split.value() > 0.2f) {

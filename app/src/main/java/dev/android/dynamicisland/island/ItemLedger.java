@@ -17,7 +17,7 @@ import java.util.Set;
  */
 final class ItemLedger {
     /** An item that comes back after being hidden by the foreground app waits this long before flying in. */
-    private static final long FLY_IN_DELAY_MS = 260;
+    private static final long FLY_IN_DELAY_MS = 320;
 
     /** Outcome of {@link #arrange}. */
     static final class Arrangement {

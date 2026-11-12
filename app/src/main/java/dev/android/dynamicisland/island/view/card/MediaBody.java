@@ -1,5 +1,6 @@
 package dev.android.dynamicisland.island.view.card;
 
+import android.graphics.BlendMode;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -7,9 +8,9 @@ import android.graphics.RectF;
 import android.os.SystemClock;
 import android.text.TextPaint;
 import android.text.TextUtils;
-import dev.android.dynamicisland.island.feedback.AudioLevels;
 import dev.android.dynamicisland.island.graphics.Colors;
 import dev.android.dynamicisland.island.graphics.Glyphs;
+import dev.android.dynamicisland.island.graphics.WaveTheme;
 import dev.android.dynamicisland.island.model.IslandItem;
 import dev.android.dynamicisland.island.view.IslandView;
 import dev.android.dynamicisland.island.view.media.MediaFx;
@@ -76,9 +77,8 @@ public final class MediaBody extends CardBody {
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private long clockSecond = Long.MIN_VALUE, durationSecond = Long.MIN_VALUE;
     private String clockText, durationText;
-    /** Smoothed wave height 0..1 (eases to 0 on pause) and per-layer smoothed audio. */
+    /** Smoothed wave height 0..1 (eases to 0 on pause). */
     private float waveAmp;
-    private final float[] waveLevel = new float[3];
     private long lastWaveFrame;
     private float wavePhase;
 
@@ -413,18 +413,19 @@ public final class MediaBody extends CardBody {
         float left = x + barLeft, right = x + barRight;
         float thumbR = owner.dp(THUMB_R_DP) * (dragged ? 1.15f : 1.0f);
         float thumbX = left + thumbR + (right - left - thumbR * 2) * fraction;
-        int accent = Colors.readableOnBlack(fx.waveformColorAt(0.5f, now));
+        WaveTheme theme = WaveTheme.forSeed(item.mediaWaveSeed != 0 ? item.mediaWaveSeed : item.accent);
+        int accent = theme.thumb(); // stock: thumb and played part take the theme's first colour
         float bar = owner.dp(dragged ? BAR_DRAGGED_DP : BAR_DP);
 
         // remaining track after the thumb
         float trackStart = thumbX + thumbR + owner.dp(THUMB_GAP_DP);
         strokePaint.setStrokeWidth(bar);
         if (trackStart < right - bar / 2) {
-            strokePaint.setColor(Colors.withAlpha(0x66FFFFFF, alpha));
+            strokePaint.setColor(Colors.withAlpha(WaveTheme.REMAIN_TRACK, alpha));
             c.drawLine(trackStart + bar / 2, centerY, right - bar / 2, centerY, strokePaint);
         }
         // wave riding on the played part
-        drawWave(c, left, thumbX, centerY - bar / 2, alpha, fx, now);
+        drawWave(c, left, thumbX, right - left, centerY - bar / 2, alpha, theme, now);
         // played part
         if (thumbX - left > bar) {
             strokePaint.setColor(Colors.withAlpha(accent, alpha));
@@ -446,54 +447,53 @@ public final class MediaBody extends CardBody {
     }
 
     /**
-     * Three translucent layers of rolling hills above the played part of the bar, like the One UI 9 player:
-     * their height follows the music (live audio when available, a calm swell otherwise) and sinks into the
-     * bar on pause.
+     * The One UI 9 player's five wave layers above the played part of the bar ({@code MultiWaveAreaTrackRenderer}):
+     * colours, opacities and blend modes from the stock theme picked by the art's hue. Each layer is
+     * {@code A * scale * (1 - sin(2pi * x / width * 3 * freq + offset - 4.5 * t))}: three cycles across the whole
+     * track times the layer's frequency, all scrolling towards the thumb at 9 rad/s * speed 0.5. It sinks into
+     * the bar on pause.
      */
-    private void drawWave(Canvas c, float left, float right, float baseY, float alpha, MediaFx fx, long now) {
+    private void drawWave(Canvas c, float left, float right, float trackWidth, float baseY, float alpha, WaveTheme theme, long now) {
         float dt = lastWaveFrame == 0 ? 0 : Math.min(0.05f, (now - lastWaveFrame) / 1000f);
         lastWaveFrame = now;
         if (dev.android.dynamicisland.settings.ModuleSettings.stillMusicEffects()) dt = 0; // low performance: a still wave
         waveAmp += ((item.playing ? 1.0f : 0.0f) - waveAmp) * (1.0f - (float) Math.exp(-dt / 0.22f));
-        wavePhase += dt * (0.9f + 0.6f * waveLevel[0]);
-        AudioLevels audio = owner.audioLevels();
-        boolean live = item.playing && audio != null && audio.isLive();
-        for (int i = 0; i < waveLevel.length; i++) {
-            float target;
-            if (live) {
-                int band = Math.min(AudioLevels.BANDS - 1, i * 2);
-                target = 0.25f + 0.75f * audio.level(band);
-            } else {
-                target = 0.6f + 0.25f * (float) Math.sin(now / 900.0 + i * 1.7);
-            }
-            waveLevel[i] += (target - waveLevel[i]) * (1.0f - (float) Math.exp(-dt / 0.12f));
-        }
+        wavePhase += dt * WaveTheme.PHASE_PER_SECOND * WaveTheme.SPEED;
+        if (wavePhase < -1000f) wavePhase += (float) (Math.PI * 2 * 100); // keep float precision
         float span = right - left;
-        if (waveAmp < 0.01f || span < owner.dp(24)) return;
-        float maxH = owner.dp(WAVE_DP) * waveAmp;
-        float[] at = {0.25f, 0.6f, 0.85f};
-        float[] freq = {2.1f, 3.3f, 1.4f};
-        float[] speed = {1.0f, -1.4f, 0.7f};
-        int steps = Math.max(12, Math.round(span / owner.dp(4)));
-        for (int layer = 0; layer < 3; layer++) {
+        if (waveAmp < 0.01f || span < owner.dp(24) || trackWidth <= 0) return;
+        float amp = owner.dp(WAVE_DP) / 2f * waveAmp; // stock: A * (1 - sin) peaks at 2A
+        int steps = Math.max(12, Math.round(span / owner.dp(2)));
+        for (int layer = 0; layer < WaveTheme.LAYERS; layer++) {
             wavePath.rewind();
             wavePath.moveTo(left, baseY);
-            float h = maxH * waveLevel[layer] * (layer == 1 ? 0.8f : 1.0f);
+            float a = amp * WaveTheme.SCALES[layer];
+            double k = Math.PI * 2 * WaveTheme.CYCLES * WaveTheme.FREQUENCIES[layer] / trackWidth;
+            double phase = wavePhase + WaveTheme.PHASES[layer];
             for (int s = 0; s <= steps; s++) {
                 float u = s / (float) steps;
                 float px = left + span * u;
-                // taper to the bar at both ends; hills move along the bar
-                float env = (float) Math.sin(Math.PI * u);
-                env = (float) Math.pow(env, 0.7);
-                float hills = 0.5f + 0.5f * (float) Math.sin(u * freq[layer] * Math.PI * 2 * (span / owner.dp(300))
-                        + wavePhase * speed[layer] * 2.4f + layer * 1.3f);
-                wavePath.lineTo(px, baseY - h * env * (0.35f + 0.65f * hills));
+                // taper into the bar at both ends of the played part
+                float env = (float) Math.pow(Math.sin(Math.PI * u), 0.5);
+                float wave = (float) (1.0 - Math.sin(k * (px - left) + phase));
+                wavePath.lineTo(px, baseY - a * wave * env);
             }
             wavePath.lineTo(right, baseY);
             wavePath.close();
-            int colour = Colors.readableOnBlack(fx.waveformColorAt(at[layer], now));
-            wavePaint.setColor(Colors.withAlpha(colour, alpha * 0.55f));
+            int colour = theme.colors[layer];
+            wavePaint.setColor(Colors.withAlpha(colour | 0xFF000000, alpha * ((colour >>> 24) / 255f)));
+            wavePaint.setBlendMode(blend(theme.modes[layer]));
             c.drawPath(wavePath, wavePaint);
+        }
+        wavePaint.setBlendMode(null);
+    }
+
+    private static BlendMode blend(int mode) {
+        switch (mode) {
+            case WaveTheme.ADD: return BlendMode.PLUS;
+            case WaveTheme.OVERLAY: return BlendMode.OVERLAY;
+            case WaveTheme.SCREEN: return BlendMode.SCREEN;
+            default: return null;
         }
     }
 }

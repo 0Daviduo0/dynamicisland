@@ -81,8 +81,11 @@ final class IslandPlacement {
     private boolean revealPending;
 
     private int neededHeight;
+    private boolean launching;
     private float centerYPortrait = -1.0f;
     private float centerYLandscape = -1.0f;
+    /** The camera hole in portrait screen pixels while the island sits on it, else empty. */
+    private final RectF holePortrait = new RectF();
     /** Packages whose chips the launcher animates into the island, from the last refresh. */
     private Set<String> exitPackages = new LinkedHashSet<>();
     private final RectF scratch = new RectF();
@@ -346,6 +349,14 @@ final class IslandPlacement {
                     break;
             }
         }
+        if (!landscape) {
+            // closing apps fly into the camera hole, and the island then grows out of it
+            if (holeD > 0.0f) {
+                holePortrait.set(centerX - holeD / 2.0f, centerY - holeD / 2.0f, centerX + holeD / 2.0f, centerY + holeD / 2.0f);
+            } else {
+                holePortrait.setEmpty();
+            }
+        }
         view.setPillSize(ModuleSettings.pillHeightPercent(), ModuleSettings.pillMinWidthDp(), ModuleSettings.pillMaxWidthDp());
         view.setHoleTextPadding(ModuleSettings.holeTextPaddingDp());
         view.setGeometry(width, centerX, centerY, holeD, tablet);
@@ -420,12 +431,21 @@ final class IslandPlacement {
         applyWindowHeight();
     }
 
+    /** An app is growing out of the island: the window keeps the full screen until the animation ends. */
+    void setLaunching(boolean launching) {
+        if (this.launching != launching) {
+            this.launching = launching;
+            applyWindowHeight();
+        }
+    }
+
     private void applyWindowHeight() {
         if (window == null) {
             return;
         }
         int height = Math.max(neededHeight, Math.round(pillCenterY() + density * WINDOW_EXTRA_HEIGHT_DP));
-        if (view != null && view.isExpanded()) {
+        if ((view != null && view.isExpanded()) || launching) {
+            // an app growing out of the island draws its card in this window, so it must cover the whole screen
             height = Math.max(height, window.windowBounds().height());
         }
         window.setWindowHeight(height);
@@ -438,12 +458,11 @@ final class IslandPlacement {
         exitPackages = new LinkedHashSet<>();
     }
 
-    /** Remembers the packages of the latest refresh and tells the launcher when they changed. */
+    /** Remembers the packages of the latest refresh and tells the launcher when they or the target changed. */
     void updateExitPackages(Set<String> packages) {
-        if (!packages.equals(exitPackages)) {
-            exitPackages = packages;
-            pushExitTargets(false);
-        }
+        exitPackages = packages;
+        // also when only the island's visibility changed: the target is the hole while it is empty, else the pill
+        pushExitTargets(false);
     }
 
     /** Tells the launcher where the island rests (portrait and landscape), see {@link ExitAnimationBridge}. */
@@ -459,8 +478,9 @@ final class IslandPlacement {
         float pillHeight = Math.max(scratch.height(), density * MIN_EXIT_TARGET_HEIGHT_DP);
         float portraitY = centerYPortrait > 0.0f ? centerYPortrait : FALLBACK_CENTER_Y_PORTRAIT_DP * density;
         float landscapeY = centerYLandscape > 0.0f ? centerYLandscape : FALLBACK_CENTER_Y_LANDSCAPE_DP * density;
-        exit.push(exitPackages, pillRect(shortSide, portraitY, pillWidth, pillHeight),
-                pillRect(longSide, landscapeY, pillWidth, pillHeight), force);
+        Rect portraitTarget = holePortrait.isEmpty() || view.showsIsland() ? pillRect(shortSide, portraitY, pillWidth, pillHeight) : new Rect(
+                Math.round(holePortrait.left), Math.round(holePortrait.top), Math.round(holePortrait.right), Math.round(holePortrait.bottom));
+        exit.push(exitPackages, portraitTarget, pillRect(longSide, landscapeY, pillWidth, pillHeight), force);
     }
 
     private static Rect pillRect(float screenWidth, float centerY, float pillWidth, float pillHeight) {

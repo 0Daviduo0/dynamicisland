@@ -953,6 +953,7 @@ final class IMode {
         // In the reference, the timer remains above media, and native widgets remain above app content.
         if(card.item.kind==IslandItem.Kind.CALL) return 3;
         if(card.body instanceof dev.android.dynamicisland.island.view.card.TimerBody
+                || card.body instanceof dev.android.dynamicisland.island.view.card.ClockBody
                 || card.body instanceof dev.android.dynamicisland.island.view.card.RecordingBody) return 2;
         return card.item.isMedia ? 1 : 0;
     }

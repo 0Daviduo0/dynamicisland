@@ -259,7 +259,7 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
     void scheduleFrame() {
         if (!frameScheduled && !renderingPaused) {
             frameScheduled = true;
-            long delay = framePacer.delayMillis(ModuleSettings.limitFrameRate(), interactiveMotion(), System.nanoTime());
+            long delay = framePacer.delayMillis(limitedRate(), interactiveMotion(), System.nanoTime());
             choreographer.postFrameCallbackDelayed(this, delay);
         }
     }
@@ -753,6 +753,11 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
     // ---- state queries -------------------------------------------------------------------------------------------
 
     /** True when nothing of the island is visible or touchable, so the window can be skipped. */
+    /** True while the island shows something (a pill or cards), so a closing app should fly into it rather than the hole. */
+    public boolean showsIsland() {
+        return scene.mode != Mode.HIDDEN && !scene.suppressed;
+    }
+
     public boolean isFullyHidden() {
         if (scene.mode == Mode.HIDDEN && host.hasMinimized() && !scene.suppressed) {
             return false;
@@ -888,7 +893,7 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         frameScheduled = false;
         if (renderingPaused) return;
         boolean interactiveBefore = interactiveMotion();
-        if (!framePacer.allow(ModuleSettings.limitFrameRate(), interactiveBefore, frameTimeNanos)) {
+        if (!framePacer.allow(limitedRate(), interactiveBefore, frameTimeNanos)) {
             scheduleFrame();
             return;
         }
@@ -897,7 +902,7 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         try {
             step(frameTimeNanos);
             failedFrames = 0;
-            boolean limited = ModuleSettings.limitFrameRate();
+            boolean limited = limitedRate();
             boolean interactive = interactiveMotion();
             requestRate(!frameScheduled ? REQUESTED_FRAME_RATE_CATEGORY_DEFAULT
                     : interactive ? (limited ? REQUESTED_FRAME_RATE_CATEGORY_DEFAULT : REQUESTED_FRAME_RATE_CATEGORY_HIGH)
@@ -1017,9 +1022,12 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         Layer main = scene.mainIn;
         Layer bubble = scene.bubbleIn;
         boolean need = false;
+        boolean clocks = false;
         if(scene.iMode!=null) {
-            for(IslandItem item:scene.iMode.visibleItems())
+            for(IslandItem item:scene.iMode.visibleItems()) {
+                clocks |= runningStopwatch(item);
                 need |= runningStopwatch(item) || iconPlaying(item);
+            }
         }
         need |= pillPainter.stepGlow(dt, host.audio());
         IslandItem waveItem = null;
@@ -1030,18 +1038,21 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
             need=scene.iMode==null ? compactMotion : need | compactMotion;
         }
         if (main != null) {
+            clocks |= runningStopwatch(main.content.item);
             need |= runningStopwatch(main.content.item) || (main.content.item.isMedia && mediaFx.animating(main.content.item))
                     || iconPlaying(main.content.item);
         }
         need |= clock.rolling();
         if (bubble != null) {
             IslandItem it = bubble.content.item;
+            clocks |= runningStopwatch(it);
             need |= it.pulsingDot || runningStopwatch(it) || (it.isMedia && mediaFx.animating(it)) || iconPlaying(it);
         }
         if (sliderSettleKey != null) {
             need |= now() - sliderSettleStart < SliderBody.SETTLE_MS;
         }
         for (Card c : scene.cards) {
+            clocks |= runningStopwatch(c.item) || c.body instanceof dev.android.dynamicisland.island.view.card.ClockBody && c.body.animating(now());
             need |= c.item.pulsingDot || c.item.progressIndeterminate || runningStopwatch(c.item) || iconPlaying(c.item)
                     || c.body.animating(now())
                     || c.material.animating(now()) || (scene.mode == Mode.EXPANDED && c.item.isMedia && !ModuleSettings.stillMusicEffects());
@@ -1063,6 +1074,7 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
         if (recordingKey != null && host.recordingAudio() != null) {
             need |= host.recordingAudio().envelope.isAnimating(recordingKey, SystemClock.elapsedRealtime());
         }
+        clockMotion = clocks;
         return need;
     }
 
@@ -1070,6 +1082,17 @@ public final class IslandView extends View implements Choreographer.FrameCallbac
     private static boolean iconPlaying(IslandItem item) {
         return (item.icon instanceof GlyphIcon && ((GlyphIcon) item.icon).animating())
                 || (item.mediaOutputIcon instanceof GlyphIcon && ((GlyphIcon) item.mediaOutputIcon).animating());
+    }
+
+    /**
+     * The reduced frame budget of the "limit frame rate" setting, except while a clock runs on screen (hundredths of
+     * a stopwatch, a timer bar): below 30 fps its digits visibly stutter.
+     */
+    /** A running clock is on screen this frame; see {@link #limitedRate}. */
+    private boolean clockMotion;
+
+    private boolean limitedRate() {
+        return ModuleSettings.limitFrameRate() && !clockMotion;
     }
 
     private static boolean runningStopwatch(IslandItem item) {

@@ -20,12 +20,12 @@ public final class Motion {
     /** The pill swelling back after the cards were absorbed. */
     public static final Motion PILL_REGROW = new Motion(0.4f, 0.58f);
 
-    /** A card falling out of the pill to its place in the stack. */
-    public static final Motion CARD_DROP = new Motion(0.5f, 0.66f);
+    /** A card falling out of the pill to its place in the stack: a smooth glide down, barely settling. */
+    public static final Motion CARD_DROP = new Motion(0.42f, 0.88f);
     /** A card widening to full width. */
-    public static final Motion CARD_WIDEN = new Motion(0.44f, 0.68f);
-    /** A card growing to full height. */
-    public static final Motion CARD_GROW = new Motion(0.5f, 0.64f);
+    public static final Motion CARD_WIDEN = new Motion(0.4f, 0.86f);
+    /** A card growing to full height: opens downwards without bouncing back. */
+    public static final Motion CARD_GROW = new Motion(0.44f, 0.9f);
     /** A card being drawn back up into the pill. */
     public static final Motion CARD_RETURN = new Motion(0.3f, 0.9f);
     /** A card narrowing and flattening on its way back. */
