@@ -19,15 +19,24 @@ A personal fork of [sampple-korea/dynamicisland](https://github.com/sampple-kore
   It plays System UI's own Lottie animations: play/pause morphs, and prev/next arrows that slide out and back in. The seek bar is a live waveform up to a ringed thumb.
 - **New cards:**
   - alarm, calendar, Galaxy Watch, car and workout, as Now Bar style cards with their own glyphs;
-  - Galaxy Buds: battery for each side and the case, plus noise mode;
+  - Galaxy Buds: battery for each side and the case, plus noise mode. While music plays and the Buds are connected, one island stays up for them. Its icon follows the current mode. The opened card shows the real earbuds image and lets you pick off, ambient, adaptive or noise cancelling, with a slider for the noise cancelling or ambient level. Each change shows a loading ring until the Buds confirm it, and a change they miss is sent again;
+  - timer and stopwatch: a clock card with laps and a progress bar that moves smoothly;
   - Quick Share: sending and receiving;
   - voice bars on the pill during an answered call.
+- **Animations:**
+  - an app opened from a card grows out of that card;
+  - a closing card shrinks back into the camera hole or the pill;
+  - cards open downward smoothly, without the content jumping back and redrawing;
+  - the music wave colours match the backdrop behind them.
 - **Removed:** the Gemini integration and the experimental "Dynamic inset" style.
 - **Optimizations:**
   - frame pacing that lets the panel slow down while only ambient motion runs;
   - less per-frame garbage: reused font metrics and shapes, and resource IDs resolved once instead of every frame;
   - steadier rolling numbers in the clocks;
-  - a still waveform in low-performance mode.
+  - a still waveform in low-performance mode;
+  - running timers and stopwatches keep 30 fps even with the frame-rate limit on;
+  - status-bar icons fade only under the compact pill, not under an opened card;
+  - the Buds island rebuilds only when something it shows changes, and loads its icons once.
 - **Other changes:** iMode paging refinements and a partial Italian translation.
 
 ## Requirements
