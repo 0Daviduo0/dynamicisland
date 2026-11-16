@@ -19,6 +19,10 @@ public final class CompactContent extends Content {
     private final android.graphics.Paint.FontMetrics fm = new android.graphics.Paint.FontMetrics();
     /** Smallest width the trailing part may be squeezed to. */
     private static final float MIN_TRAILING_DP = 20.0f;
+    /** Widest a leading badge (a bus line number) may get. */
+    private static final float BADGE_MAX_DP = 44.0f;
+    /** Gap between the badge and the icon, in inner gaps: a little tighter than the label after it. */
+    private static final float BADGE_GAP = 0.6f;
     /** Home score, shown beside the home logo (only when the score text splits around a hole). */
     String scoreA;
     /** Away score, shown beside the away logo. */
@@ -29,9 +33,19 @@ public final class CompactContent extends Content {
     float trailW;
     String leadingLabel;
     float leadingLabelW;
+    /** Badge drawn before the icon (a bus line number) and its width; null / 0 when none. */
+    String badge;
+    float badgeW;
+
+    /** Rolling-digit field keys, built once instead of concatenated on every frame. */
+    private final String keyLead, keyScoreA, keyScoreB, keyScore;
 
     CompactContent(IslandView owner, IslandItem item) {
         super(owner, item);
+        keyLead = item.key + "#lead";
+        keyScoreA = item.key + "#scoreA";
+        keyScoreB = item.key + "#scoreB";
+        keyScore = item.key + "#score";
         teams = item.hasTeams();
         remeasure();
     }
@@ -49,10 +63,17 @@ public final class CompactContent extends Content {
         }
         leadingLabel = null;
         leadingLabelW = 0;
+        float oldBadgeW = badgeW;
+        badge = null;
+        badgeW = 0;
+        if (item.leadingBadge != null && !teams) {
+            badge = TextUtils.ellipsize(item.leadingBadge, owner.trailPaint, owner.dp(BADGE_MAX_DP), TextUtils.TruncateAt.END).toString();
+            badgeW = owner.trailPaint.measureText(badge);
+        }
         if (owner.hasCallWaveform(item) && !teams) {
             // call pill: voice bars at the trailing side, no clock (the setting "call time" shows it instead)
             float waveW = owner.callWaveWidth();
-            boolean changed = Math.abs(waveW - trailW) > 0.5f;
+            boolean changed = Math.abs(waveW - trailW) > 0.5f || Math.abs(oldBadgeW - badgeW) > 0.5f;
             trailText = null;
             trailW = waveW;
             return changed;
@@ -60,8 +81,8 @@ public final class CompactContent extends Content {
         if (item.compactLabel != null && item.trailing == IslandItem.Trailing.TEXT
                 && !item.compactLabel.toString().equals(text)) {
             float room = owner.holeD > 0 ? (owner.maxPillW - owner.holeD) / 2 - owner.holeGap - owner.padding
-                    - Math.min(owner.holeTextPadding, owner.dp(16)) - owner.leadSize - owner.innerGap
-                    : owner.maxPillW - owner.padding * 2 - owner.leadSize - owner.innerGap * 2
+                    - Math.min(owner.holeTextPadding, owner.dp(16)) - owner.leadSize - owner.innerGap - badgeSpace()
+                    : owner.maxPillW - owner.padding * 2 - owner.leadSize - owner.innerGap * 2 - badgeSpace()
                     - Math.max(owner.dp(MIN_TRAILING_DP), text == null ? 0 : owner.trailPaint.measureText(text));
             if (room >= owner.dp(16)) {
                 leadingLabel = TextUtils.ellipsize(item.compactLabel, owner.trailPaint,
@@ -93,7 +114,7 @@ public final class CompactContent extends Content {
             }
             width = Math.min(owner.trailingWidth(item, text), maxTrail);
         }
-        boolean changed = Math.abs(width - trailW) > 0.5f;
+        boolean changed = Math.abs(width - trailW) > 0.5f || Math.abs(oldBadgeW - badgeW) > 0.5f;
         trailText = text;
         trailW = width;
         return changed;
@@ -144,10 +165,13 @@ public final class CompactContent extends Content {
     }
 
     private float leadingWidth() {
-        if (!owner.hasRecordingWaveform(item)) return owner.leadSize + (leadingLabel == null ? 0 : owner.innerGap + leadingLabelW);
-        float available = owner.holeD > 0 ? (owner.maxPillW - owner.holeD) / 2f - owner.holeGap - owner.padding
-                : owner.maxPillW - owner.padding * 2f - owner.innerGap - owner.dp(MIN_TRAILING_DP);
-        return Math.max(owner.leadSize, Math.min(owner.dp(42), available));
+        // a voice recording: red symbol here, its live waveform on the trailing side (like a call)
+        return badgeSpace() + owner.leadSize + (leadingLabel == null ? 0 : owner.innerGap + leadingLabelW);
+    }
+
+    /** Room the badge takes before the icon, its gap included. */
+    private float badgeSpace() {
+        return badge == null ? 0 : badgeW + owner.innerGap * BADGE_GAP;
     }
 
 
@@ -165,22 +189,23 @@ public final class CompactContent extends Content {
             drawTeams(c, shape, midY, lead, alpha);
             return;
         }
-        if (owner.hasRecordingWaveform(item)) {
-            float room = owner.holeD > 0 ? shape.width() / 2f - owner.holeD / 2f - owner.holeGap - owner.padding
-                    : shape.width() - owner.padding * 2f - (trailW > 0 ? trailW + owner.innerGap : 0);
-            owner.drawRecordingWaveform(c, item, shape.left + owner.padding, midY,
-                    Math.max(1f, Math.min(leadingWidth(), room)), lead * .9f, alpha);
-        } else {
-            owner.drawLeadingMono(c, item, shape.left + owner.padding, midY, lead, alpha);
+        {
+            float iconLeft = shape.left + owner.padding + badgeSpace();
+            if (badge != null) {
+                owner.trailPaint.setColor(Colors.withAlpha(Colors.WHITE, alpha));
+                owner.trailPaint.getFontMetrics(fm);
+                c.drawText(badge, shape.left + owner.padding, midY - (fm.ascent + fm.descent) / 2, owner.trailPaint);
+            }
+            owner.drawLeadingMono(c, item, iconLeft, midY, lead, alpha);
             if (leadingLabel != null) {
-                float left = shape.left + owner.padding + owner.leadSize + owner.innerGap;
+                float left = iconLeft + owner.leadSize + owner.innerGap;
                 float limit = owner.holeD > 0 ? shape.centerX() - owner.holeD / 2 - owner.holeGap - holeClearance()
                         : shape.right - owner.padding - trailW - owner.innerGap;
                 int save = c.save();
                 c.clipRect(left, shape.top, Math.max(left, limit), shape.bottom);
                 owner.trailPaint.setColor(Colors.withAlpha(callWave ? item.accent : Colors.WHITE, alpha));
                 owner.trailPaint.getFontMetrics(fm);
-                owner.drawTime(c, item.key + "#lead", leadingLabel, owner.trailPaint, left, midY - (fm.ascent + fm.descent) / 2, false);
+                owner.drawTime(c, keyLead, leadingLabel, owner.trailPaint, left, midY - (fm.ascent + fm.descent) / 2, false);
                 c.restoreToCount(save);
             }
         }
@@ -204,14 +229,14 @@ public final class CompactContent extends Content {
             owner.trailPaint.setColor(Colors.withAlpha(Colors.WHITE, alpha));
             owner.trailPaint.getFontMetrics(fm);
             float baseline = midY - ((fm.ascent + fm.descent) / 2.0f);
-            owner.drawTime(c, item.key + "#scoreA", scoreA, owner.trailPaint, leftLogoX + lead + owner.innerGap, baseline, false);
-            owner.drawTime(c, item.key + "#scoreB", scoreB, owner.trailPaint, (rightLogoX - owner.innerGap) - DigitClock.width(owner.trailPaint, scoreB), baseline, false);
+            owner.drawTime(c, keyScoreA, scoreA, owner.trailPaint, leftLogoX + lead + owner.innerGap, baseline, false);
+            owner.drawTime(c, keyScoreB, scoreB, owner.trailPaint, (rightLogoX - owner.innerGap) - DigitClock.width(owner.trailPaint, scoreB), baseline, false);
             return;
         }
         if (trailText != null) {
             owner.trailPaint.setColor(Colors.withAlpha(Colors.WHITE, alpha));
             owner.trailPaint.getFontMetrics(fm);
-            owner.drawTime(c, item.key + "#score", trailText, owner.trailPaint, (rightLogoX - owner.innerGap) - scoreW, midY - ((fm.ascent + fm.descent) / 2.0f), false);
+            owner.drawTime(c, keyScore, trailText, owner.trailPaint, (rightLogoX - owner.innerGap) - scoreW, midY - ((fm.ascent + fm.descent) / 2.0f), false);
         }
     }
 }

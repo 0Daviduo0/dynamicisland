@@ -9,6 +9,7 @@ import android.widget.RemoteViews;
 import dev.android.dynamicisland.island.detect.IconContrast;
 import dev.android.dynamicisland.island.graphics.Colors;
 import dev.android.dynamicisland.island.model.IslandItem;
+import dev.android.dynamicisland.island.model.NavFacts;
 import dev.android.dynamicisland.island.view.TimeFormat;
 import dev.android.dynamicisland.island.view.IslandView;
 import dev.android.dynamicisland.xposed.Refl;
@@ -144,7 +145,11 @@ final class OaCardBuilder {
             }
             progress.bindStyle(it, extras, pkg);
         }
+        bindBadge(it, extras);
 
+        if (it.kind == IslandItem.Kind.NAVIGATION) {
+            bindNavigation(it, extras, (CharSequence) Refl.get(data, "mExpandedChipText"));
+        }
         bindDescription(it, data, subtitle, pkg);
         bindLaps(it, a.sbn);
         Object when = Refl.get(data, "mWhen");
@@ -160,6 +165,17 @@ final class OaCardBuilder {
         bindButtonColors(it, data);
         bindButtons(it, data, pkg);
         return it;
+    }
+
+    /**
+     * Optional extras an app can add for the pill: a short badge drawn before the icon (a bus line
+     * number) and the icon's colour (the line colour).
+     */
+    static void bindBadge(IslandItem it, Bundle extras) {
+        CharSequence badge = extras.getCharSequence("dynamicisland.badgeText");
+        it.leadingBadge = hasText(badge) ? badge.toString().trim() : null;
+        int color = extras.getInt("dynamicisland.badgeColor", 0);
+        it.leadingTint = color == 0 ? 0 : Colors.readableOnBlack(color);
     }
 
     /** Pill icon, and the accent taken from the chip / card background (or the notification colour). */
@@ -234,6 +250,27 @@ final class OaCardBuilder {
             if (hasText(primary)) {
                 showText(it, primary);
             }
+        }
+    }
+
+    /**
+     * A route reads like iOS: the pill shows the distance to the next turn (or the minutes left), never the road
+     * sentence that made it as wide as the screen; the card gets the facts apart (see {@link NavFacts}).
+     */
+    static void bindNavigation(IslandItem it, Bundle extras, CharSequence chipText) {
+        CharSequence chip = hasText(chipText) ? chipText : extras.getCharSequence("android.ongoingActivityNoti.chipExpandedText");
+        long now = System.currentTimeMillis();
+        NavFacts nav = NavFacts.of(extras.getCharSequence("android.title"), extras.getCharSequence("android.text"),
+                extras.getCharSequence("android.subText"), extras.getCharSequence("android.shortCriticalText"), chip, now);
+        it.nav = nav;
+        it.subtitle = null; // the card draws the route facts itself
+        if (nav.distance != null) {
+            showText(it, nav.distance);
+        } else if (nav.minutesLeft(now) != null) {
+            showText(it, nav.minutesLeft(now));
+        } else if (it.trailing == IslandItem.Trailing.TEXT) {
+            it.trailing = IslandItem.Trailing.NONE; // a road name is no compact value
+            it.trailingText = null;
         }
     }
 

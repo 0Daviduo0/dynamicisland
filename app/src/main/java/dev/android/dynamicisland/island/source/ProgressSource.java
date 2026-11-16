@@ -55,7 +55,7 @@ public final class ProgressSource {
     private Runnable onShownChanged = () -> { };
 
     public ProgressSource(Context ctx, Handler main, Runnable onChange) {
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
         this.main = main;
         this.onChange = onChange;
     }

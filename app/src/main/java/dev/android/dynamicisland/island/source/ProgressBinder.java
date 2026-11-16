@@ -21,6 +21,12 @@ final class ProgressBinder {
     private static final String SEG_COLOR = "android.ongoingActivityNoti.progressSegments.segmentColor";
     private static final String SEG_START = "android.ongoingActivityNoti.progressSegments.segmentStart";
 
+    /**
+     * Optional extra an app can add to a ProgressStyle notification: one flag per segment, true for
+     * the ones drawn dashed (e.g. walking legs of a transit trip).
+     */
+    static final String EXTRA_DASHED = "dynamicisland.dashedSegments";
+
     private final IconLoader icons;
     /** Packages whose ProgressStyle bundle layout was already logged. */
     private final Set<String> tracedPackages = new HashSet<>();
@@ -104,6 +110,8 @@ final class ProgressBinder {
         if (coloured) {
             it.progressSegmentColors = colors;
             it.progressSegmentStarts = starts;
+            boolean[] dashed = extras.getBooleanArray(EXTRA_DASHED);
+            it.progressSegmentDashed = dashed != null && dashed.length == count ? dashed : null;
             // EXTRA_STYLED_BY_PROGRESS is the framework key; the longer name is accepted too
             String styledKey = extras.containsKey("android.styledByProgress")
                     ? "android.styledByProgress" : "android.progressStyledByProgress";

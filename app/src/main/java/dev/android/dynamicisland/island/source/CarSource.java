@@ -48,7 +48,7 @@ public final class CarSource {
         this.ctx = ctx;
         this.main = main;
         this.items = new TimedItems(main, onChange);
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
     }
 
     public void start() {

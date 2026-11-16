@@ -30,6 +30,22 @@ public final class Fonts {
 
     public static String source() { return family().source; }
 
+    private static final android.graphics.Paint.FontMetrics[] METRICS = new android.graphics.Paint.FontMetrics[16];
+    private static int nextMetrics;
+
+    /**
+     * Font metrics of {@code paint} without allocating: draw code asks for them every frame. Main thread only; the
+     * object is reused after 15 more calls, so read it right away and never keep it in a field.
+     */
+    public static android.graphics.Paint.FontMetrics metrics(android.graphics.Paint paint) {
+        int i = nextMetrics;
+        nextMetrics = (i + 1) & 15;
+        android.graphics.Paint.FontMetrics fm = METRICS[i];
+        if (fm == null) METRICS[i] = fm = new android.graphics.Paint.FontMetrics();
+        paint.getFontMetrics(fm);
+        return fm;
+    }
+
     private static Family family() {
         boolean flip = usesFlipFont();
         Typeface regular = flip ? Typeface.DEFAULT : Typeface.create("sec", Typeface.NORMAL);

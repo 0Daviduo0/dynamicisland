@@ -73,6 +73,8 @@ public final class Diagnostics {
     private static final ArrayDeque<String> EVENTS = new ArrayDeque<>();
     private static final SimpleDateFormat EVENT_TIME = new SimpleDateFormat("HH:mm:ss", Locale.US);
     private static long lastPublish;
+    /** The last report written, minus its "time" line: an unchanged report is not written again. */
+    private static String lastBody;
     private static boolean dirty;
     private static Context context;
 
@@ -187,6 +189,15 @@ public final class Diagnostics {
         return sb.substring(0, MAX_CHARS);
     }
 
+    private static String withoutTimeLine(String report) {
+        int start = report.indexOf("\ntime ");
+        if (start < 0) {
+            return report;
+        }
+        int end = report.indexOf('\n', start + 1);
+        return end < 0 ? report.substring(0, start) : report.substring(0, start) + report.substring(end);
+    }
+
     /** Gives the report to the settings app (at most every few seconds, off the calling thread). */
     public static synchronized void publish(Context ctx) {
         if (ctx != null) {
@@ -203,6 +214,11 @@ public final class Diagnostics {
         lastPublish = now;
         dirty = false;
         final String text = report();
+        String body = withoutTimeLine(text);
+        if (body.equals(lastBody)) {
+            return; // a settings write persists to disk and wakes every observer: skip it when nothing moved
+        }
+        lastBody = body;
         final Context c = context;
         new Thread(() -> {
             try {

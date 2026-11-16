@@ -166,10 +166,6 @@ public final class IslandWindow {
         added = false;
     }
 
-    boolean isAttached() {
-        return added;
-    }
-
     public void setShown(boolean shown) {
         int visibility = shown ? View.VISIBLE : View.GONE;
         if (root.getVisibility() != visibility) {
@@ -296,16 +292,16 @@ public final class IslandWindow {
 
     // ---- surface fade --------------------------------------------------------------------------
 
-    /**
-     * Fades and scales the whole window surface about the pivot (px, py).
-     *
-     * @return false if the surface transaction is unavailable (the caller should fade another way)
-     */
     /** For the diagnostics report: how much the frosted-glass backdrop filter reused its arrays. */
     public static String materialBufferStats() {
         return "backdrop filter: " + MaterialCapture.bufferStats();
     }
 
+    /**
+     * Fades and scales the whole window surface about the pivot (px, py).
+     *
+     * @return false if the surface transaction is unavailable (the caller should fade another way)
+     */
     public boolean setSurfaceFade(float alpha, float scale, float px, float py) {
         if (surfaceFader.set(alpha, scale, px, py)) {
             applySurfaceFade();

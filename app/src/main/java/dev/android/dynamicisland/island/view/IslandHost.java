@@ -69,7 +69,6 @@ public interface IslandHost {
     /** Whether an item is currently minimized into the camera hole. */
     boolean hasMinimized();
 
-    default void onInsetStackChanged(boolean open) { }
 
     /** Switches the shown item; {@code direction} is -1 for the previous and +1 for the next one. */
     void onCycle(int direction);

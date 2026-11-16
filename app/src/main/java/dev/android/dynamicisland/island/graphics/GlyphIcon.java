@@ -20,6 +20,7 @@ import dev.android.dynamicisland.settings.ModuleSettings;
  * resources); the canvas drawings below stay as the fallback if an animation cannot be parsed.
  */
 public final class GlyphIcon extends Drawable {
+    private static final PorterDuffXfermode CLEAR = new PorterDuffXfermode(PorterDuff.Mode.CLEAR);
     /** Which pictogram to draw. {@code POWER_SAVE} is drawn as a battery with a plus cut out. */
     public enum Kind { BATTERY, BATTERY_CHARGING, BELL, BELL_OFF, VIBRATE, HEADPHONES, CAMERA, MIC, LOCATION, MOON, PLANE, TORCH, HOTSPOT, ROTATE_LOCK, POWER_SAVE, DOWNLOAD, SPEAKER, FINGERPRINT, FACE, PIN, WATCH, ALARM, CALENDAR, CAR, WORKOUT }
 
@@ -283,7 +284,7 @@ public final class GlyphIcon extends Drawable {
         rect.set(left, cy - (h / 2) + pad, left + Math.max(stroke, (right - left) * level), cy + (h / 2) - pad);
         c.drawRoundRect(rect, r * 0.5f, r * 0.5f, paint);
         if (kind == Kind.POWER_SAVE) {
-            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+            paint.setXfermode(CLEAR);
             float arm = h * 0.3f;
             float t = Math.max(stroke * 0.7f, 1.5f);
             float px = cx - (w * 0.04f);
@@ -294,7 +295,7 @@ public final class GlyphIcon extends Drawable {
             paint.setXfermode(null);
         }
         if (kind == Kind.BATTERY_CHARGING) {
-            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+            paint.setXfermode(CLEAR);
             float bs = h * 0.9f;
             path.reset();
             float x0 = cx - (w * 0.04f) - (bs / 2);
@@ -339,7 +340,7 @@ public final class GlyphIcon extends Drawable {
             // slash with a transparent outline so it reads on top of the bell
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeCap(Paint.Cap.ROUND);
-            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+            paint.setXfermode(CLEAR);
             paint.setStrokeWidth(stroke * 2.6f);
             c.drawLine(cx - (s * 0.34f), cy - (s * 0.34f), cx + (s * 0.34f), cy + (s * 0.34f), paint);
             paint.setXfermode(null);
@@ -385,7 +386,7 @@ public final class GlyphIcon extends Drawable {
         c.drawRoundRect(rect, s * 0.1f, s * 0.1f, paint);
         rect.set(cx - (s * 0.18f), cy - (s * 0.36f), cx + (s * 0.1f), cy - (s * 0.2f));
         c.drawRoundRect(rect, s * 0.05f, s * 0.05f, paint);
-        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        paint.setXfermode(CLEAR);
         c.drawCircle(cx, cy + (s * 0.03f), s * 0.17f, paint);
         paint.setXfermode(null);
         c.drawCircle(cx, cy + (s * 0.03f), s * 0.09f, paint);
@@ -465,7 +466,7 @@ public final class GlyphIcon extends Drawable {
         path.lineTo(cx + (s * 0.21f), cy + (s * 0.02f));
         path.close();
         c.drawPath(path, paint);
-        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        paint.setXfermode(CLEAR);
         c.drawCircle(cx, cy - (s * 0.1f), s * 0.09f, paint);
         paint.setXfermode(null);
         c.restoreToCount(layer);
@@ -475,7 +476,7 @@ public final class GlyphIcon extends Drawable {
         int layer = c.saveLayer(cx - s, cy - s, cx + s, cy + s, null);
         paint.setStyle(Paint.Style.FILL);
         c.drawCircle(cx - (s * 0.02f), cy, s * 0.34f, paint);
-        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        paint.setXfermode(CLEAR);
         c.drawCircle(cx + (s * 0.16f), cy - (s * 0.12f), s * 0.3f, paint);
         paint.setXfermode(null);
         c.restoreToCount(layer);
@@ -524,7 +525,7 @@ public final class GlyphIcon extends Drawable {
         c.drawPath(path, paint);
         rect.set(cx - (s * 0.115f), cy + (s * 0.02f), cx + (s * 0.115f), cy + (s * 0.42f));
         c.drawRoundRect(rect, s * 0.07f, s * 0.07f, paint);
-        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        paint.setXfermode(CLEAR);
         rect.set(cx - (s * 0.032f), cy + (s * 0.1f), cx + (s * 0.032f), cy + (s * 0.22f));
         c.drawRoundRect(rect, s * 0.032f, s * 0.032f, paint);
         paint.setXfermode(null);
@@ -618,7 +619,7 @@ public final class GlyphIcon extends Drawable {
         c.drawRoundRect(rect, s * 0.05f, s * 0.05f, paint);
         int layer = c.saveLayer(cx - s, cy - s, cx + s, cy + s, null);
         c.drawCircle(cx, cy, s * 0.27f, paint);
-        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        paint.setXfermode(CLEAR);
         c.drawCircle(cx, cy, s * 0.27f - stroke, paint);
         paint.setXfermode(null);
         paint.setStyle(Paint.Style.STROKE);
@@ -688,7 +689,7 @@ public final class GlyphIcon extends Drawable {
         c.drawRoundRect(rect, s * 0.05f, s * 0.05f, paint);
         rect.set(cx + (s * 0.2f), cy + (s * 0.12f), cx + (s * 0.36f), cy + (s * 0.36f));
         c.drawRoundRect(rect, s * 0.05f, s * 0.05f, paint);
-        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        paint.setXfermode(CLEAR);
         rect.set(cx - (s * 0.15f), cy - (s * 0.28f), cx + (s * 0.15f), cy - (s * 0.12f));
         c.drawRoundRect(rect, s * 0.03f, s * 0.03f, paint);
         c.drawCircle(cx - (s * 0.24f), cy + (s * 0.04f), s * 0.055f, paint);

@@ -44,7 +44,7 @@ public final class WatchSource {
     public WatchSource(Context ctx, Handler main, Runnable onChange) {
         this.ctx = ctx;
         this.items = new TimedItems(main, onChange);
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
     }
 
     public void start() {

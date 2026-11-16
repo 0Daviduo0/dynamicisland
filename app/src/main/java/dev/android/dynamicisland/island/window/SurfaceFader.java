@@ -18,6 +18,10 @@ final class SurfaceFader {
     private float pivotX;
     private float pivotY;
     private boolean failed;
+    /** Values changed since the last apply; otherwise only a new surface (native handle) needs them again. */
+    private boolean dirty = true;
+    private SurfaceControl appliedTo;
+    private Object appliedNative;
 
     boolean hasFailed() {
         return failed;
@@ -37,6 +41,7 @@ final class SurfaceFader {
         scale = newScale;
         pivotX = px;
         pivotY = py;
+        dirty = true;
         return true;
     }
 
@@ -50,11 +55,17 @@ final class SurfaceFader {
             Object surface = viewRoot == null ? null : Refl.call(viewRoot, "getSurfaceControl", new Object[0]);
             if (surface instanceof SurfaceControl && ((SurfaceControl) surface).isValid()) {
                 SurfaceControl control = (SurfaceControl) surface;
+                // runs before every frame while faded: a transaction per frame with the same values is wasted
+                Object nativeHandle = Refl.get(control, "mNativeObject");
+                if (!dirty && control == appliedTo && nativeHandle != null && nativeHandle.equals(appliedNative)) return;
                 transaction.setAlpha(control, alpha);
                 transaction.setScale(control, scale, scale);
                 // scaling happens about the surface origin; shift it so the pivot stays put
                 transaction.setPosition(control, pivotX * (1.0f - scale), pivotY * (1.0f - scale));
                 transaction.apply();
+                dirty = false;
+                appliedTo = control;
+                appliedNative = nativeHandle;
             }
         } catch (Throwable t) {
             failed = true;

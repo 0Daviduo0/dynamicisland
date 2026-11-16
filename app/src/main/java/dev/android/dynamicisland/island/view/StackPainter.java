@@ -1,5 +1,7 @@
 package dev.android.dynamicisland.island.view;
 
+import dev.android.dynamicisland.island.model.IslandItem;
+
 import dev.android.dynamicisland.island.view.media.MediaFx;
 import dev.android.dynamicisland.island.material.FrostedSurface;
 import dev.android.dynamicisland.island.material.MaterialShape;
@@ -52,6 +54,12 @@ final class StackPainter {
     private final Paints paints;
     private final Scene scene;
     private final Shapes shapes;
+    /** Set by the view once it exists; draws the compact row beside the camera hole of a card opened around it. */
+    IslandView view;
+    private CompactContent holeRow;
+    private final RectF holeRowRect = new RectF();
+    /** Inset of the row beside the hole from the card's sides, so the icon sits off the rounded corner. */
+    private static final float HOLE_ROW_INSET_DP = 14.0f;
     private final Path clip = new Path();
     private final RectF inner = new RectF();
     private final RectF slot = new RectF();
@@ -61,7 +69,7 @@ final class StackPainter {
 
     /** Outline of a card that is still changing shape: brighter than the pill's, so the motion shows on a black screen. */
     private static final int MORPH_OUTLINE = 0x70FFFFFF;
-    private Shader rim;
+    private LinearGradient rim;
     private float rimHeight = -1.0f;
     private float rimTop = Float.NaN;
     private float rimAlpha = -1.0f;
@@ -298,6 +306,7 @@ final class StackPainter {
         canvas.clipPath(clip);
         float backgroundAlpha=c.iMode && c.item.isMedia ? Easing.easeOutCubic(opening) : alpha;
         if (!frosted || !c.item.isMedia) drawBackground(c.body, canvas, r, backgroundAlpha);
+        drawHoleBand(c.body, canvas, r, backgroundAlpha);
         Canvas target = canvas;
         canvas = c.contentBlur.begin(target, r, contentBlurAmount(c, t, opening), m.dp(ContentBlur.RADIUS_DP));
         int contentSave = canvas.save();
@@ -348,27 +357,93 @@ final class StackPainter {
         return Easing.easeInOut(clamp01(opening / FROSTED_FULL_AT));
     }
 
-    /** The light rim gradient of a card; rebuilt only when the card moved or changed height noticeably. */
+    /**
+     * The light rim gradient of a card. The gradient is drawn in unit space and moved onto the card with its local
+     * matrix, so cards at different heights or positions share it; it is rebuilt only when its colours change
+     * noticeably (alpha / settle steps of 0.02).
+     */
     private Shader rimShader(RectF r, float alpha, float settle, int base) {
-        boolean stale = rim == null || Math.abs(rimHeight - r.height()) > 1.0f || Math.abs(rimTop - r.top) > 1.0f
-                || Math.abs(rimAlpha - alpha) > 0.02f || Math.abs(rimSettle - settle) > 0.02f || rimBase != base;
-        if (stale) {
-            rimHeight = r.height();
-            rimTop = r.top;
+        if (rim == null || Math.abs(rimAlpha - alpha) > 0.02f || Math.abs(rimSettle - settle) > 0.02f || rimBase != base) {
             rimAlpha = alpha;
             rimSettle = settle;
             rimBase = base;
-            rim = new LinearGradient(0.0f, r.top, 0.0f, r.bottom,
+            rim = new LinearGradient(0.0f, 0.0f, 0.0f, 1.0f,
                     Colors.withAlpha(whiteMix(base, Colors.RIM_TOP, settle), alpha),
                     Colors.withAlpha(whiteMix(base, Colors.RIM_BOTTOM, settle), alpha), Shader.TileMode.CLAMP);
+            rimHeight = -1.0f;
+        }
+        if (rimHeight != r.height() || rimTop != r.top) {
+            rimHeight = r.height();
+            rimTop = r.top;
+            rimMatrix.setScale(1.0f, Math.max(1.0f, r.height()));
+            rimMatrix.postTranslate(0.0f, r.top);
+            rim.setLocalMatrix(rimMatrix);
         }
         return rim;
     }
+
+    private final android.graphics.Matrix rimMatrix = new android.graphics.Matrix();
 
     /** Between two white colours that differ only in alpha. */
     private static int whiteMix(int from, int to, float t) {
         int a = Math.round((from >>> 24) + (((to >>> 24) - (from >>> 24)) * t));
         return (a << 24) | 0x00FFFFFF;
+    }
+
+    /** How far below the band the black keeps fading into the content (artwork, glow), in dp. */
+    private static final float HOLE_FADE_DP = 34.0f;
+    private static final float HOLE_ROW_FADE_DP = 16.0f;
+    private final android.graphics.Paint bandPaint = new android.graphics.Paint();
+    private android.graphics.LinearGradient bandFade;
+    private float bandFadeKey = -1.0f;
+    private final android.graphics.Matrix bandMatrix = new android.graphics.Matrix();
+
+    /**
+     * Paints the top band of a card that wraps the camera hole: pure black down to just under the hole, then a
+     * fade into whatever the card shows, so a bright album cover or glow never outlines the hole.
+     */
+    void drawHoleBand(CardBody body, Canvas canvas, RectF frame, float alpha) {
+        if (body.shadeBottom <= 0.0f || alpha <= 0.0f || body.h <= 0.0f) {
+            return;
+        }
+        // The card hangs from the pill's top, so the hole keeps its place on screen while the card grows: the
+        // band keeps its true height from the first frame (a band scaled with the card let the cover show
+        // around the hole until the card was almost open) and only the fade gives way to a short card.
+        float band = Math.min(body.shadeBottom, frame.height());
+        // a row next to the hole sits on the black: only a short soft edge, so the artwork starts right under it
+        float wanted = body.shadeFade > 0.0f ? body.shadeFade : m.dp(body.holeRow ? HOLE_ROW_FADE_DP : HOLE_FADE_DP);
+        float fade = Math.min(wanted, frame.height() - band);
+        if (fade < 1.0f) {
+            bandPaint.setShader(null);
+            bandPaint.setColor(0xFF000000);
+            bandPaint.setAlpha(Math.round(255 * Math.min(1.0f, alpha)));
+            canvas.drawRect(frame.left, frame.top, frame.right, frame.top + band, bandPaint);
+            return;
+        }
+        int a = Math.round(255 * Math.min(1.0f, alpha));
+        bandPaint.setShader(null);
+        bandPaint.setColor(0xFF000000);
+        bandPaint.setAlpha(a);
+        canvas.drawRect(frame.left, frame.top, frame.right, frame.top + band, bandPaint);
+        // one unit-high gradient, stretched to the fade and dimmed by the paint: nothing is allocated while the
+        // card opens (its fade length and alpha change every frame)
+        if (bandFade == null) {
+            bandFade = new android.graphics.LinearGradient(0.0f, 0.0f, 0.0f, 1.0f,
+                    new int[]{0xFF000000, 0x8C000000, 0x00000000}, new float[]{0.0f, 0.45f, 1.0f},
+                    android.graphics.Shader.TileMode.CLAMP);
+        }
+        if (fade != bandFadeKey) {
+            bandMatrix.setScale(1.0f, fade);
+            bandFade.setLocalMatrix(bandMatrix);
+            bandFadeKey = fade;
+        }
+        int save = canvas.save();
+        canvas.translate(0.0f, frame.top + band);
+        bandPaint.setShader(bandFade);
+        bandPaint.setAlpha(a);
+        canvas.drawRect(frame.left, 0.0f, frame.right, fade, bandPaint);
+        canvas.restoreToCount(save);
+        bandPaint.setShader(null);
     }
 
     void drawBackground(CardBody body, Canvas canvas, RectF frame, float alpha) {
@@ -379,10 +454,30 @@ final class StackPainter {
         }
     }
 
+    /**
+     * The band of a card opened around the camera hole carries what the compact pill showed, on either side
+     * of the hole (icon on the left, value on the right), as iOS keeps an activity's leading and trailing
+     * content in the top row of its expanded view. Media and custom app layouts already lead with their own.
+     */
+    private void drawHoleRow(CardBody body, Canvas canvas, float x, float y, float alpha, long elapsed) {
+        IslandItem item = body.item;
+        if (body.topInset <= 0.0f || view == null || item == null || item.isMedia || body instanceof RemoteBody) {
+            return;
+        }
+        if (holeRow == null || holeRow.item != item) {
+            holeRow = new CompactContent(view, item);
+        }
+        float inset = m.dp(HOLE_ROW_INSET_DP);
+        float midY = y + (m.pillH / 2.0f); // the card's top is the pill's top, so the hole is centred here
+        holeRowRect.set(x + inset, midY - (m.pillH / 2.0f), x + body.w - inset, midY + (m.pillH / 2.0f));
+        holeRow.draw(canvas, holeRowRect, alpha, elapsed);
+    }
+
     /** A bad notification payload must never take System UI down with an exception inside onDraw. */
     void drawBody(CardBody body, Canvas canvas, float x, float y, float alpha, long elapsed) {
         try {
-            body.draw(canvas, x, y, alpha, elapsed);
+            body.draw(canvas, x, y + body.topInset, alpha, elapsed);
+            drawHoleRow(body, canvas, x, y, alpha, elapsed);
         } catch (Throwable t) {
             if (!drawFailureLogged) {
                 drawFailureLogged = true;

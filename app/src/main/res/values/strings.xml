@@ -792,4 +792,10 @@
     <string name="island_charge_now">Now: %1$s</string>
     <string name="island_charge_text_on">Screen On: %1$s • %2$s</string>
     <string name="island_charge_text_off">Screen Off: %1$s • %2$s</string>
+    <string name="expand_position">Expanded card position</string>
+    <string name="desc_expand_position">Where an opened card appears.</string>
+    <string name="expand_below">Below the camera</string>
+    <string name="expand_around">Around the camera</string>
+    <string name="card_roundness_concentric">Concentric corners</string>
+    <string name="card_roundness_concentric_summary">Follow the curve of the screen corners automatically, like iOS.</string>
 </resources>

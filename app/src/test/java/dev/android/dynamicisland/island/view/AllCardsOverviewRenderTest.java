@@ -38,7 +38,7 @@ public class AllCardsOverviewRenderTest {
     private final List<Example> examples = new ArrayList<>();
     private record Example(String label, IslandItem item) { }
     private record Rendered(Example example, IslandView view, CardBody body) { }
-    private static final float WIDTH=360, COLUMN=392, MARGIN=24, SCALE=2;
+    private static final float MARGIN=24, SCALE=2;
 
     private IslandItem item(String key,String title,String subtitle,GlyphIcon.Kind icon,int accent) {
         IslandItem it=new IslandItem("overview:"+key);it.title=title;it.subtitle=subtitle;
@@ -201,8 +201,19 @@ public class AllCardsOverviewRenderTest {
     }
 
     @Test public void renderEveryCurrentCardIntoOneContactSheet() throws Exception {
+        render(false,"build/render/all-cards-current-overview.png");
+    }
+
+    /** The same cards opened around the camera hole, at the geometry of a 1080px / 384dpi phone (hole drawn in grey). */
+    @Test public void renderEveryCardAroundTheCameraHole() throws Exception {
+        render(true,"build/render/all-cards-around-hole.png");
+    }
+
+    private void render(boolean around,String file) throws Exception {
+        final float WIDTH=around?437.5f:360, COLUMN=WIDTH+32;
         SharedPreferences prefs=context.getSharedPreferences("all-cards-overview",0);
-        prefs.edit().clear().putBoolean(ModuleSettings.KEY_CONCURRENT_RECORDING_INPUT,true).commit();
+        prefs.edit().clear().putBoolean(ModuleSettings.KEY_CONCURRENT_RECORDING_INPUT,true)
+                .putBoolean(ModuleSettings.KEY_EXPAND_AROUND_HOLE,around).commit();
         ModuleSettings.configurePreview(prefs);
         GlyphIcon.setPlaybackFrozen(true);
         try {
@@ -212,9 +223,11 @@ public class AllCardsOverviewRenderTest {
             examples();assertEquals(36,examples.size());
             List<Rendered> rendered=new ArrayList<>();Set<String> layouts=new HashSet<>();
             for(Example example:examples) {
-                IslandView view=new IslandView(context,host);view.setGeometry(360,180,40,22,false);
+                IslandView view=new IslandView(context,host);
+                if(around)view.setGeometry(450,225,21.25f,12,false);else view.setGeometry(360,180,40,22,false);
                 view.setRemoteLayer(new FrameLayout(context));
                 CardBody body=view.bodies().create(example.item,WIDTH,false);
+                if(around)((Metrics)ReflectionHelpers.getField(view,"metrics")).fitAroundHole(body);
                 assertTrue(example.label+" height",body.h>0 && body.h<500);
                 layouts.add(body.getClass().getSimpleName());rendered.add(new Rendered(example,view,body));
             }
@@ -246,10 +259,14 @@ public class AllCardsOverviewRenderTest {
                 if(r.body instanceof RemoteBody remote) {
                     ViewDraw.draw(canvas,remote,x,y);
                 }
+                if(around) {
+                    Paint hole=new Paint(Paint.ANTI_ALIAS_FLAG);hole.setColor(0xFF3A3A3F);
+                    canvas.drawCircle(x+WIDTH/2,y+15,6,hole);
+                }
                 if(i%3==2)rowTop+=rowHeights[i/3];
             }
             text(canvas,"현재 로컬 코드의 실제 렌더링 · 내용은 예시 · 배경 블러와 앱 자체 레이아웃은 기기에 따라 달라질 수 있습니다.",MARGIN,rowTop-4,12,0xFF858994,false);
-            RenderCapture.write(bitmap,new File("build/render/all-cards-current-overview.png"));
+            RenderCapture.write(bitmap,new File(file));
         } finally {GlyphIcon.setPlaybackFrozen(false);prefs.edit().clear().commit();ModuleSettings.configurePreview(prefs);}
     }
     private static class ViewDraw {

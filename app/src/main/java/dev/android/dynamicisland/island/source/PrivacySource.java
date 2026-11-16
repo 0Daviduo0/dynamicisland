@@ -4,7 +4,6 @@ import android.app.AppOpsManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.SystemClock;
@@ -34,7 +33,7 @@ public final class PrivacySource {
     private static final long NOTED_HOLD_MS = 5000;
     private static final int FIRST_APP_UID = 10000;
     private static final int ORANGE = 0xFFFF9F0A;
-    private static final int GREEN = 0xFF3DB653;
+    private static final int GREEN = dev.android.dynamicisland.island.graphics.Colors.CALL_GREEN;
     private static final int BLUE = 0xFF0A84FF;
 
     /** Packages whose sensor use is the phone / system itself and not worth an island. */
@@ -70,7 +69,6 @@ public final class PrivacySource {
         }
     };
     private final Map<String, Use> uses = new HashMap<>();
-    private final Map<String, String> labels = new HashMap<>();
     private IslandItem cached;
     private String cachedSignature = "";
 
@@ -272,19 +270,7 @@ public final class PrivacySource {
     }
 
     private String label(String pkg) {
-        String cachedLabel = labels.get(pkg);
-        if (cachedLabel != null) {
-            return cachedLabel;
-        }
-        String label = pkg;
-        try {
-            PackageManager pm = ctx.getPackageManager();
-            label = String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)));
-        } catch (Throwable ignored) {
-            // unknown package: show its name
-        }
-        labels.put(pkg, label);
-        return label;
+        return AppLook.shared(ctx).label(pkg);
     }
 
     /** The module has no string resources inside System UI, so pick the language here. */

@@ -53,7 +53,7 @@ public final class RecorderNotificationSource {
     RecorderNotificationSource(Context ctx, Runnable onChange, java.util.function.LongSupplier wallTime,
             java.util.function.LongSupplier elapsedTime) {
         this.ctx = ctx;
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
         this.onChange = onChange;
         this.wallTime = wallTime;
         this.elapsedTime = elapsedTime;

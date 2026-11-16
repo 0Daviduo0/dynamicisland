@@ -27,7 +27,7 @@ public class CardShapeSettingsTest {
         assertFalse(ModuleSettings.customCardRoundness());
         assertNull(find(activity.page(),SeekBar.class));
         SettingsRenderTest.render(activity,"settings_ko_cardCorners_default");
-        find(activity.page(),Switch.class).toggle();
+        custom(activity).toggle();
         SeekBar slider=find(activity.page(),SeekBar.class);
         assertNotNull(slider);
         SeekBar.OnSeekBarChangeListener listener=ReflectionHelpers.getField(slider,"mOnSeekBarChangeListener");
@@ -37,10 +37,18 @@ public class CardShapeSettingsTest {
         activity.refresh();
         assertEquals(40,find(activity.page(),SeekBar.class).getProgress());
         SettingsRenderTest.render(activity,"settings_ko_cardCorners_custom");
-        find(activity.page(),Switch.class).toggle();
+        custom(activity).toggle();
         ModuleSettings.configurePreview(prefs); assertFalse(ModuleSettings.customCardRoundness());
         assertEquals(40,prefs.getInt(ModuleSettings.KEY_CARD_CORNER_RADIUS_DP,0)); // keep the user's value while off
         prefs.edit().clear().commit();ModuleSettings.configurePreview(prefs);
+    }
+    /** The custom radius switch: the second one, after "concentric corners". */
+    private Switch custom(SettingsActivity activity) {
+        java.util.List<Switch> all=new java.util.ArrayList<>(); collect(activity.page(),all); return all.get(1);
+    }
+    private void collect(View view,java.util.List<Switch> out) {
+        if(view instanceof Switch)out.add((Switch)view);
+        if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++)collect(((ViewGroup)view).getChildAt(i),out);
     }
     private <T extends View> T find(View view,Class<T> type) {
         if(type.isInstance(view))return type.cast(view);

@@ -712,4 +712,10 @@
     <string name="island_charge_now">現在: %1$s</string>
     <string name="island_charge_text_on">画面オン: %1$s • %2$s</string>
     <string name="island_charge_text_off">画面オフ: %1$s • %2$s</string>
+    <string name="expand_position">展開カードの位置</string>
+    <string name="desc_expand_position">開いたカードが表示される場所。</string>
+    <string name="expand_below">カメラの下</string>
+    <string name="expand_around">カメラを囲む</string>
+    <string name="card_roundness_concentric">同心の角</string>
+    <string name="card_roundness_concentric_summary">画面の角のカーブに自動で合わせます（iOS と同様）。</string>
 </resources>

@@ -46,6 +46,8 @@ public final class BudsSource {
     private static final int MSG_JSON = 2000;
     private static final long CONNECT_MS = 5000;
     private static final long NOISE_MS = 2200;
+    /** Galaxy Wearable's mode glyphs carry their own padding: drawn larger so they fill their slot. */
+    private static final float MODE_ICON_SCALE = 1.4f;
     /** A noise mode reported this soon after the first state of a device is its starting mode, not a change. */
     private static final long SETTLE_MS = 2500;
     /** How long after the island's own command the plugin's reports of the old state are ignored. */
@@ -70,6 +72,10 @@ public final class BudsSource {
     };
     private final Messenger inbox;
     private final Map<String, ServiceConnection> bound = new HashMap<>();
+    /** Messenger service class of each installed plugin, to bind it again with auto-create. */
+    private final Map<String, String> pluginClasses = new HashMap<>();
+    /** Plugins bound with auto-create: their messenger service is created for the island. */
+    private final java.util.Set<String> created = new java.util.HashSet<>();
     private final Map<String, Device> devices = new HashMap<>();
     /** Each plugin's service, to send it commands; by package. */
     private final Map<String, Messenger> services = new HashMap<>();
@@ -133,14 +139,41 @@ public final class BudsSource {
         try {
             List<ResolveInfo> services = ctx.getPackageManager().queryIntentServices(new Intent(ACTION_MESSENGER), 0);
             for (ResolveInfo info : services) {
-                if (info.serviceInfo != null) bind(info.serviceInfo.packageName, info.serviceInfo.name);
+                if (info.serviceInfo == null) continue;
+                pluginClasses.put(info.serviceInfo.packageName, info.serviceInfo.name);
+                // a plugin that already runs (Galaxy Wearable has the earbuds) gets its messenger created now:
+                // nothing else may create it, and a plain bind would wait for ever
+                bind(info.serviceInfo.packageName, info.serviceInfo.name, pluginRunning(info.serviceInfo.packageName));
             }
         } catch (Throwable t) {
             XLog.e("buds: plugin lookup failed", t);
         }
     }
 
-    private void bind(String pkg, String cls) {
+    private boolean pluginRunning(String pkg) {
+        try {
+            android.app.ActivityManager am = ctx.getSystemService(android.app.ActivityManager.class);
+            List<android.app.ActivityManager.RunningAppProcessInfo> procs = am == null ? null : am.getRunningAppProcesses();
+            if (procs != null) for (android.app.ActivityManager.RunningAppProcessInfo p : procs) if (pkg.equals(p.processName)) return true;
+        } catch (Throwable ignored) {
+            // unknown: wait for the plugin as before
+        }
+        return false;
+    }
+
+    /** Earbuds connected: make sure every plugin's messenger exists, so their state (and island) arrives. */
+    private void createPlugins() {
+        for (Map.Entry<String, String> e : pluginClasses.entrySet()) {
+            if (created.contains(e.getKey()) || services.containsKey(e.getKey())) continue;
+            ServiceConnection old = bound.remove(e.getKey());
+            if (old != null) {
+                try { ctx.unbindService(old); } catch (Throwable ignored) { }
+            }
+            bind(e.getKey(), e.getValue(), true);
+        }
+    }
+
+    private void bind(String pkg, String cls, boolean autoCreate) {
         if (bound.containsKey(pkg)) return;
         ServiceConnection connection = new ServiceConnection() {
             @Override
@@ -168,8 +201,11 @@ public final class BudsSource {
         };
         try {
             Intent intent = new Intent(ACTION_MESSENGER).setClassName(pkg, cls);
-            // no BIND_AUTO_CREATE: never start a plugin just for the island, attach when Galaxy Wearable runs it
-            if (ctx.bindService(intent, connection, 0)) bound.put(pkg, connection);
+            // auto-create only when the plugin runs or earbuds connect: never start a plugin just for the island
+            if (ctx.bindService(intent, connection, autoCreate ? Context.BIND_AUTO_CREATE : 0)) {
+                bound.put(pkg, connection);
+                if (autoCreate) created.add(pkg);
+            }
         } catch (Throwable t) {
             XLog.e("buds: bind " + pkg + " failed", t);
         }
@@ -481,6 +517,8 @@ public final class BudsSource {
         if (!connectCard && it.budsModeIcon != null) {
             it.trailing = IslandItem.Trailing.ICON;
             it.trailingIcon = it.budsModeIcon;
+            it.trailingIconWhite = true;
+            it.trailingIconScale = MODE_ICON_SCALE;
             if ("off".equals(d.noise)) it.accent = OFF_GREY;
         } else if (level >= 0) {
             it.progress = level / 100f;
@@ -598,7 +636,7 @@ public final class BudsSource {
 
     /** Whether the earbuds' island stays without announcing anything: connected while a player shows. */
     private boolean persistent(Device d) {
-        return d.connected && linkUp(d) && hasPlayer.getAsBoolean();
+        return d.connected && hasPlayer.getAsBoolean() && linkUp(d); // the Bluetooth binder call last
     }
 
     private static java.lang.reflect.Method isConnected;
@@ -640,6 +678,7 @@ public final class BudsSource {
      * known state (the plugin's fresh state follows within a second and refreshes it).
      */
     public void onAudioConnected(String address, String name) {
+        if (name != null && name.toLowerCase(java.util.Locale.ROOT).contains("buds")) createPlugins();
         Device d = devices.get(address);
         if (d == null) {
             // not seen yet (first connection since System UI started): its plugin state announces it shortly

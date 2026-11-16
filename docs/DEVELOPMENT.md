@@ -184,3 +184,9 @@ Maintainer feedback on local builds informed motion tuning; OEM/device coverage 
 See [0.1.14 release notes](release-notes/0.1.14.md), [iMotion](iMode.md) and
 [release recommendations](release-recommendations.md). Classic material and the existing animation
 remain the defaults.
+
+## iOS parity (work in progress)
+
+Slots model, status bar reaction, expanding around the camera hole, call photo and waveform, concentric
+corners and the collapse frame-rate fix: see [IOS-PARITY.md](IOS-PARITY.md) for what was done, why, and
+what is still to verify.

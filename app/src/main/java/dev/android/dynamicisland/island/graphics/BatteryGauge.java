@@ -7,6 +7,15 @@ import android.graphics.RectF;
 
 /** Static circular level gauge shared by compact and expanded battery presentations. */
 public final class BatteryGauge {
+    private int shownPercent = Integer.MIN_VALUE;
+    private String shownText;
+    /** Semibold UI face for the number; Paints replaces it when the system font changes. Main thread only. */
+    private static android.graphics.Typeface numberFace;
+
+    public static void setNumberFace(android.graphics.Typeface face) {
+        numberFace = face;
+    }
+
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF bounds = new RectF();
@@ -31,14 +40,21 @@ public final class BatteryGauge {
         text.setStyle(Paint.Style.FILL);
         text.setColor(Colors.withAlpha(number ? Colors.WHITE : colour, alpha));
         if (number) {
-            String value = percent >= 0 ? percent + "%" : "—";
-            text.setTypeface(Fonts.of(600));
+            if (percent != shownPercent || shownText == null) {
+                shownPercent = percent;
+                shownText = percent >= 0 ? percent + "%" : "—";
+            }
+            String value = shownText;
+            // Fonts.of reads reflective fields and creates a Typeface: once per font change, not per frame
+            android.graphics.Typeface face = numberFace;
+            if (face == null) numberFace = face = Fonts.of(600);
+            text.setTypeface(face);
             text.setTextAlign(Paint.Align.CENTER);
             text.setTextSize(diameter * .28f);
-            Paint.FontMetrics fm = text.getFontMetrics();
+            Paint.FontMetrics fm = Fonts.metrics(text);
             canvas.drawText(value, cx, cy - (fm.ascent + fm.descent) / 2f, text);
         } else if (bolt) {
-            Glyphs.draw(canvas, 5, cx, cy, diameter * .5f, text);
+            Glyphs.draw(canvas, Glyphs.BOLT, cx, cy, diameter * .5f, text);
         }
     }
 }

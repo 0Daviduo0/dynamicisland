@@ -38,7 +38,7 @@ public final class AlarmSource {
     public AlarmSource(Context ctx, Handler main, Runnable onChange) {
         this.ctx = ctx;
         this.onChange = onChange;
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
     }
 
     /** True for the alert of a ringing alarm. */

@@ -66,12 +66,17 @@ final class MaterialCapture {
     /** What the buffers saved, for the diagnostics report (read on the main thread, written by the worker). */
     private static volatile long freshBytes,reusedBytes,filterCount;
 
+    /** Kept so destroy() can take it off the host: the window makes a new capture after each re-attach. */
+    private final View.OnAttachStateChangeListener detach=new View.OnAttachStateChangeListener() {
+        public void onViewAttachedToWindow(View v) { }
+        public void onViewDetachedFromWindow(View v) { stop(); }
+    };
+    /** Reused clamp of the requested bounds: update runs before every frame. Main thread only. */
+    private final Rect safe=new Rect();
+
     MaterialCapture(View host,Consumer<MaterialFrame> receiver) {
         this.host=host;this.receiver=receiver;
-        host.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-            public void onViewAttachedToWindow(View v) { }
-            public void onViewDetachedFromWindow(View v) { stop(); }
-        });
+        host.addOnAttachStateChangeListener(detach);
     }
     void update(Rect bounds,boolean enabled) {
         update(bounds,enabled,false);
@@ -91,7 +96,7 @@ final class MaterialCapture {
         int oldWidth=displaySize.x,oldHeight=displaySize.y;
         host.getDisplay().getRealSize(displaySize);
         if(active&&(oldWidth!=displaySize.x||oldHeight!=displaySize.y)){epoch++;requested.setEmpty();receiver.accept(null);}
-        Rect safe=new Rect(bounds);
+        safe.set(bounds);
         if(!safe.intersect(0,0,displaySize.x,displaySize.y)) { stop();return; }
         long nextPeriod=prewarming?PREWARM_PERIOD_MS:PERIOD_MS;
         boolean changedMode=periodMs!=nextPeriod;periodMs=nextPeriod;
@@ -118,7 +123,7 @@ final class MaterialCapture {
         // Drop caches on the worker after any in-flight readback. Never recycle a displayed bitmap.
         worker.execute(() -> {lastPixels=null;lastFrame=null;lastBounds=null;spareScan=null;argbBuffer=null;scratch.clear();});
     }
-    void destroy() { stop();destroyed=true;worker.shutdown(); }
+    void destroy() { stop();destroyed=true;host.removeOnAttachStateChangeListener(detach);worker.shutdown(); }
     private SurfaceControl surface() throws Exception {
         if(getRoot==null) getRoot=View.class.getMethod("getViewRootImpl");
         Object root=getRoot.invoke(host);if(root==null)return null;

@@ -2,7 +2,6 @@ package dev.android.dynamicisland.island.view.card;
 
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.text.TextUtils;
 import dev.android.dynamicisland.island.graphics.Colors;
 import dev.android.dynamicisland.island.model.IslandItem;
 import dev.android.dynamicisland.island.view.IslandView;
@@ -25,7 +24,6 @@ import dev.android.dynamicisland.island.view.IslandView;
 public final class TimerBody extends CardBody {
     private static final int MAX_BUTTONS = 3;
     /** Glyph id of the "stop" square (Glyphs.STOP, not public) used for actions that only have a callback. */
-    private static final int GLYPH_STOP = 6;
 
     final boolean call;
     final float iconSize;
@@ -33,6 +31,9 @@ public final class TimerBody extends CardBody {
     final float pad;
     final boolean stacked;
     final float stackedMiddle;
+    /** Around the camera hole: centre line of the main row (photo / time, buttons), below the hole. */
+    private float holeRowMain;
+    private static final float HOLE_PHOTO_DP = 46.0f;
     public TimerBody(IslandView owner, IslandItem item, float w) {
         super(owner, item, w);
         pad = owner.dp(18.0f);
@@ -75,7 +76,7 @@ public final class TimerBody extends CardBody {
                 b.bg = Colors.BUTTON_GRAY;
             }
             if (action.runnable != null && action.icon == null && b.glyph == 0) {
-                b.glyph = GLYPH_STOP;
+                b.glyph = dev.android.dynamicisland.island.graphics.Glyphs.STOP;
             }
             float buttonWidth;
             if (b.circle) {
@@ -109,12 +110,84 @@ public final class TimerBody extends CardBody {
         }
     }
 
+    /**
+     * Around the camera hole, laid out like an iOS call / timer activity: nothing beside the camera, the photo (or the
+     * symbol), the text and the buttons in one row right under it. A call reads name / running time in green with its
+     * voice bars; a ringing call name / "Incoming call"; a timer big time / label.
+     */
+    @Override
+    protected float layoutBesideHole() {
+        if (stacked) return -1.0f;
+        Paint.FontMetrics big = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.bigTimePaint);
+        float textBlock = big.descent - big.ascent + (label == null ? 0 : owner.smallPaint.getTextSize() + owner.dp(4));
+        float rowH = call ? owner.dp(HOLE_PHOTO_DP) : Math.max(owner.dp(46.0f), textBlock);
+        holeRowMain = holeBottom + owner.dp(8.0f) + rowH / 2.0f;
+        if (!buttons.isEmpty()) {
+            shiftButtons(holeRowMain - buttons.get(0).r.centerY());
+        }
+        return holeRowMain + rowH / 2.0f + owner.dp(16.0f);
+    }
+
+    private void drawBesideHole(Canvas c, float x, float y, float a) {
+        String time = owner.trailingString(item);
+        float midY = y + holeRowMain;
+        float iconSize = call ? owner.dp(HOLE_PHOTO_DP) : this.iconSize;
+        float iconX = x + pad;
+        if (call && item.cardImage != null) {
+            owner.drawDrawable(c, item.cardImage, true, 0, iconX, midY - (iconSize / 2.0f), iconSize, a, iconSize / 2.0f);
+        } else {
+            owner.drawLeading(c, item, iconX, midY, iconSize, a);
+        }
+        float textX = iconX + iconSize + owner.dp(12.0f);
+        float textRight = (buttons.isEmpty() ? w + x - pad : buttons.get(buttons.size() - 1).r.left + x - owner.dp(10.0f));
+        if (!call) {
+            drawTimeAndLabel(c, a, midY, textX, textRight, time);
+            return;
+        }
+        // name, and under it the running time in green with the voice bars, or what the ringing call is
+        boolean anonymous = item.title == null || String.valueOf(item.title).equals(String.valueOf(item.appName));
+        String name = item.callRinging && anonymous && item.trailingText != null ? item.trailingText.toString()
+                : label != null ? label : (item.trailingText != null ? item.trailingText.toString() : null);
+        boolean running = !item.callRinging && time != null;
+        CharSequence second = running ? null : item.callRinging && !anonymous ? item.subtitle : item.appName;
+        if (second != null && name != null && second.toString().equals(name)) second = null;
+        float room = Math.max(1.0f, textRight - textX);
+        Paint.FontMetrics tm = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.titlePaint);
+        Paint.FontMetrics sm = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.trailPaint);
+        float titleH = tm.descent - tm.ascent;
+        float subH = running || second != null ? sm.descent - sm.ascent : 0.0f;
+        float top = midY - (titleH + subH) / 2.0f;
+        if (name != null) {
+            owner.titlePaint.setColor(Colors.withAlpha(Colors.WHITE, a));
+            c.drawText(fitted(21, name, owner.titlePaint, room), textX, top - tm.ascent, owner.titlePaint);
+        }
+        float base = top + titleH - sm.ascent;
+        if (running) {
+            owner.trailPaint.setColor(Colors.withAlpha(Colors.CALL_GREEN, a));
+            owner.drawTime(c, timeKey(0, "#hole"), time, owner.trailPaint, textX, base, false);
+            float waveX = textX + IslandView.timeWidth(owner.trailPaint, time) + owner.dp(10.0f);
+            if (owner.hasCallWaveform(item) && waveX + owner.callWaveWidth() <= textRight) {
+                owner.drawCallWaveform(c, item, waveX, top + titleH + subH / 2.0f, a);
+            }
+        } else if (second != null) {
+            owner.smallPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a));
+            c.drawText(fitted(22, second, owner.smallPaint, room), textX, base, owner.smallPaint);
+        }
+    }
+
     @Override
     public void draw(Canvas c, float x, float y, float alpha, long elapsed) {
+        if (holeRow) {
+            float p = rowAlpha(elapsed, 0);
+            float dy = (1.0f - p) * owner.dp(6.0f);
+            drawBesideHole(c, x, y + dy, alpha * p);
+            drawButtons(c, x, y + dy, alpha * p);
+            return;
+        }
         float rowAlpha = rowAlpha(elapsed, 0);
         float a = alpha * rowAlpha;
         float dy = (1.0f - rowAlpha) * owner.dp(6.0f);
-        float midY = y + (stacked ? stackedMiddle : h / 2.0f) + dy;
+        float midY = y + (stacked ? stackedMiddle : (h - topInset) / 2.0f) + dy;
         float iconX = x + pad;
         if (call && item.cardImage != null) {
             owner.drawDrawable(c, item.cardImage, true, 0, iconX, midY - (iconSize / 2.0f), iconSize, a, iconSize / 2.0f);
@@ -147,7 +220,7 @@ public final class TimerBody extends CardBody {
 
     /** Big time on top, small label under it; a lone label is centred on the row. */
     private void drawTimeAndLabel(Canvas c, float a, float midY, float textX, float textRight, String time) {
-        Paint.FontMetrics timeMetrics = owner.bigTimePaint.getFontMetrics();
+        Paint.FontMetrics timeMetrics = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.bigTimePaint);
         float timeHeight = timeMetrics.descent - timeMetrics.ascent;
         float labelHeight = label != null ? owner.smallPaint.getTextSize() + owner.dp(4.0f) : 0.0f;
         float blockTop = midY - ((timeHeight + labelHeight) / 2.0f);
@@ -159,17 +232,17 @@ public final class TimerBody extends CardBody {
             float baseline = blockTop - timeMetrics.ascent;
             int save = c.save();
             c.scale(scale, scale, textX, baseline);
-            owner.drawTime(c, item.key + "#card", time, owner.bigTimePaint, textX, baseline, item.chronoCountDown);
+            owner.drawTime(c, timeKey(1, "#card"), time, owner.bigTimePaint, textX, baseline, item.chronoCountDown);
             c.restoreToCount(save);
         }
         if (label != null) {
             owner.smallPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a));
-            String shownLabel = TextUtils.ellipsize(label, owner.smallPaint, textRight - textX, TextUtils.TruncateAt.END).toString();
+            String shownLabel = fitted(23, label, owner.smallPaint, textRight - textX);
             float baseline;
             if (time != null) {
-                baseline = ((blockTop + timeHeight) + owner.dp(2.0f)) - owner.smallPaint.getFontMetrics().ascent;
+                baseline = ((blockTop + timeHeight) + owner.dp(2.0f)) - dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.smallPaint).ascent;
             } else {
-                baseline = midY - ((owner.smallPaint.getFontMetrics().ascent + owner.smallPaint.getFontMetrics().descent) / 2.0f);
+                baseline = midY - ((dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.smallPaint).ascent + dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.smallPaint).descent) / 2.0f);
             }
             c.drawText(shownLabel, textX, baseline, owner.smallPaint);
         }
@@ -178,12 +251,12 @@ public final class TimerBody extends CardBody {
     /** Call layout: caller name above the row centre, call duration in green below it. */
     private void drawCallLines(Canvas c, float a, float midY, float textX, float textRight, String time) {
         owner.titlePaint.setColor(Colors.withAlpha(Colors.WHITE, a));
-        String name = TextUtils.ellipsize(label, owner.titlePaint, textRight - textX, TextUtils.TruncateAt.END).toString();
-        Paint.FontMetrics titleMetrics = owner.titlePaint.getFontMetrics();
+        String name = fitted(24, label, owner.titlePaint, textRight - textX);
+        Paint.FontMetrics titleMetrics = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.titlePaint);
         c.drawText(name, textX, (midY - owner.dp(2.0f)) - titleMetrics.descent, owner.titlePaint);
         if (time != null) {
             owner.trailPaint.setColor(Colors.withAlpha(Colors.CALL_GREEN, a));
-            owner.drawTime(c, item.key + "#call", time, owner.trailPaint, textX, (midY + owner.dp(4.0f)) - owner.trailPaint.getFontMetrics().ascent, false);
+            owner.drawTime(c, timeKey(2, "#call"), time, owner.trailPaint, textX, (midY + owner.dp(4.0f)) - dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.trailPaint).ascent, false);
         }
     }
 }

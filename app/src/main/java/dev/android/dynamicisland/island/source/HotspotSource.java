@@ -52,6 +52,14 @@ public final class HotspotSource {
             else if (state == AP_DISABLED) end();
         }
     };
+    /** While the hotspot is on: no /proc reads with the screen off, one fresh sample when it comes back. */
+    private final BroadcastReceiver screen = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            main.removeCallbacks(refresh);
+            if (on && Intent.ACTION_SCREEN_ON.equals(intent.getAction())) refresh.run();
+        }
+    };
+    private boolean screenRegistered;
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             if (!on) return;
@@ -108,6 +116,16 @@ public final class HotspotSource {
         sample();
         main.removeCallbacks(refresh);
         main.postDelayed(refresh, REFRESH_MS);
+        if (!screenRegistered) {
+            try {
+                IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+                filter.addAction(Intent.ACTION_SCREEN_ON);
+                ctx.registerReceiver(screen, filter, null, main, Context.RECEIVER_NOT_EXPORTED);
+                screenRegistered = true;
+            } catch (RuntimeException error) {
+                XLog.once("HotspotSource.screen", error);
+            }
+        }
         onChange.run();
     }
 
@@ -115,6 +133,10 @@ public final class HotspotSource {
         if (!on) return;
         on = false;
         main.removeCallbacks(refresh);
+        if (screenRegistered) {
+            try { ctx.unregisterReceiver(screen); } catch (RuntimeException ignored) { }
+            screenRegistered = false;
+        }
         onChange.run();
     }
 
@@ -195,7 +217,7 @@ public final class HotspotSource {
         String size = Formatter.formatShortFileSize(ctx, bytes);
         item.subtitle = IslandText.get(ctx, "island_hotspot_devices", clients) + " · " + size + " · " + duration(seconds);
         item.icon = GlyphIcon.of(GlyphIcon.Kind.HOTSPOT);
-        item.accent = 0xFF3DB653;
+        item.accent = dev.android.dynamicisland.island.graphics.Colors.CALL_GREEN;
         item.trailing = IslandItem.Trailing.TEXT;
         item.trailingText = size;
         item.postTime = startedAt;

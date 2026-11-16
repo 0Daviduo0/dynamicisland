@@ -16,6 +16,9 @@ import dev.android.dynamicisland.xposed.XLog;
 public final class FrostedSurface {
     private static final long CAPTURE_BLEND_MS=90;
     private static final long MISSING_FRAME_GRACE_MS=200;
+    private static final long FIELD_GAP_MS=50;
+    /** A card that jumps further than this gets its field at once: only small, continuous moves are deferred. */
+    private static final float FIELD_SLIDE_PX=48;
     private static final class EmptyBackdrop {
         static final Bitmap PIXEL=Bitmap.createBitmap(new int[]{0xff000000},1,1,Bitmap.Config.ARGB_8888);
     }
@@ -31,6 +34,9 @@ public final class FrostedSurface {
     private final float[] fades=new float[4];
     private float lastCorner=-1,lastCornerPower=-1,phase;
     private boolean primed;
+    /** Tone uniforms hold a colour (zeroed once when music goes away); last reported capture state, -1 none. */
+    private boolean tonesSet=true;
+    private int reportedCaptured=-1;
     private final float[] common={0,0,0,0,0,0,0,0,0,0,0,1};
     private final float[] edge={1,1,1,2,4,2,4,.7f*.6f,.6f*.6f,0,0,0,0,0,4,.8f};
     private final float[] shadow={1,1,1,.6f*.3f,0,0,86*LIGHT_DENSITY,0,10*LIGHT_DENSITY,0,0,4,.7f,LIGHT_DENSITY,1,0};
@@ -78,8 +84,8 @@ public final class FrostedSurface {
             if(!blending&&next!=current.frame) {
                 previous=current;current=new Input(next);blendStartedAt=now;blending=true;bind=true;
             }
-            boolean beforeChanged=previous.update(bounds,screenBounds,responseScratch);
-            boolean afterChanged=current==previous ? beforeChanged : current.update(bounds,screenBounds,responseScratch);
+            boolean beforeChanged=previous.update(bounds,screenBounds,responseScratch,now);
+            boolean afterChanged=current==previous ? beforeChanged : current.update(bounds,screenBounds,responseScratch,now);
             if(bind||beforeChanged)previous.bind(shader,true);
             if(bind||afterChanged)current.bind(shader,false);
             float scale=bounds.width()/1072f,w=bounds.width()/scale,h=bounds.height()/scale,corner=radius/scale;
@@ -105,14 +111,19 @@ public final class FrostedSurface {
                 if(ModuleSettings.glowAlbum()) {
                     colour("tone0",music.waveformColorAt(0,now));colour("tone1",music.waveformColorAt(.5f,now));colour("tone2",music.waveformColorAt(1,now));
                 }else{int color=ModuleSettings.glowColour();colour("tone0",color);colour("tone1",color);colour("tone2",color);}
-            }else{colour("tone0",0);colour("tone1",0);colour("tone2",0);}
+            }else if(tonesSet){colour("tone0",0);colour("tone1",0);colour("tone2",0);tonesSet=false;}
+            if(music!=null)tonesSet=true;
             float blend=blending ? Math.max(0,Math.min(1,(now-blendStartedAt)/(float)CAPTURE_BLEND_MS)) : 1;
             blend=blend*blend*(3-2*blend);
             shader.setFloatUniform("captureAmount",blend);
             shader.setFloatUniform("materialAmount",Math.max(0,Math.min(1,amount)));
             int save=canvas.save();canvas.translate(bounds.left,bounds.top);
             canvas.drawRect(0,0,bounds.width(),bounds.height(),paint);canvas.restoreToCount(save);
-            Diagnostics.fact("card material",current.frame==null ? "frosted GPU; stable local backdrop" : "frosted GPU; interpolated captured backdrop; G2 curved lighting");
+            boolean captured=current.frame!=null;
+            if(reportedCaptured!=(captured?1:0)) {
+                reportedCaptured=captured?1:0;
+                Diagnostics.fact("card material",captured ? "frosted GPU; interpolated captured backdrop; G2 curved lighting" : "frosted GPU; stable local backdrop");
+            }
             return true;
         }catch(Throwable t) {
             unavailable=true;clear();XLog.once("frosted material unavailable",t);
@@ -130,20 +141,31 @@ public final class FrostedSurface {
         float localW=-1,localH=-1,offsetX,offsetY,scaleX,scaleY;
         int fw=1,fh=1;
         float responseMean,responseMin,responseMax;
+        /** While the card moves the field is resampled at most every FIELD_GAP_MS; a skipped one is done later. */
+        long fieldAt;
+        boolean fieldStale;
+        float fieldScreenX,fieldScreenY;
         Input(MaterialFrame frame) {
             this.frame=frame;
             backdrop=new BitmapShader(frame==null ? EmptyBackdrop.PIXEL : frame.bitmap,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);
             backdrop.setFilterMode(BitmapShader.FILTER_MODE_LINEAR);
             if(frame==null)field=new BitmapShader(EmptyBackdrop.PIXEL,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP);
         }
-        boolean update(RectF local,RectF screen,MaterialPixels.ResponseScratch scratch) {
-            if(localW==local.width()&&localH==local.height()&&lastScreen.equals(screen))return false;
+        boolean update(RectF local,RectF screen,MaterialPixels.ResponseScratch scratch,long now) {
+            boolean moved=!(localW==local.width()&&localH==local.height()&&lastScreen.equals(screen));
+            if(!moved&&!(fieldStale&&now-fieldAt>=FIELD_GAP_MS))return false;
             localW=local.width();localH=local.height();lastScreen.set(screen);
             if(frame==null)return true;
             float sx=frame.bitmap.getWidth()/(float)frame.screenBounds.width(),sy=frame.bitmap.getHeight()/(float)frame.screenBounds.height();
             offsetX=(screen.left-frame.screenBounds.left)*sx;offsetY=(screen.top-frame.screenBounds.top)*sy;
             scaleX=sx*screen.width()/localW;scaleY=sy*screen.height()/localH;
-            fw=40;fh=Math.max(8,Math.round(localH*40/localW));
+            int nextFh=Math.max(8,Math.round(localH*40/localW));
+            // Morphs and drags move the card every frame: sampling the CPU response field and uploading a new
+            // texture each time is too much. Same-size fields wait for the gap; the shader keeps the old one.
+            if(field!=null&&fieldWidth==40&&fieldHeight==nextFh&&now-fieldAt<FIELD_GAP_MS
+                    &&Math.abs(screen.left-fieldScreenX)<FIELD_SLIDE_PX&&Math.abs(screen.top-fieldScreenY)<FIELD_SLIDE_PX){fieldStale=true;return true;}
+            fieldStale=false;fieldAt=now;fieldScreenX=screen.left;fieldScreenY=screen.top;
+            fw=40;fh=nextFh;
             int[] response=frame.pixels.response(offsetX,offsetY,screen.width()*sx,screen.height()*sy,fw,fh,scratch);
             // Geometry still needs rebinding, but identical response pixels need no new GPU texture.
             // Keep an independent CPU copy: scratch is shared with the other capture-blend input.
@@ -189,10 +211,11 @@ public final class FrostedSurface {
         float ratio=(w-(bw-total*bp))/np;out[offset]=solid*ratio/total;out[offset+1]=fade*ratio/total;
     }
     public boolean animating(long now) {
-        return requested()&&(blending||(missingSince>=0&&now-missingSince<MISSING_FRAME_GRACE_MS));
+        return requested()&&(blending||(missingSince>=0&&now-missingSince<MISSING_FRAME_GRACE_MS)
+                ||(current!=null&&current.fieldStale)||(previous!=null&&previous.fieldStale));
     }
     public void clear() {
         responseScratch.clear();previous=current=null;shader=null;paint.setShader(null);blending=false;missingSince=-1;
-        lastBounds.setEmpty();lastCorner=lastCornerPower=-1;lastTime=lastInputReport=0;primed=false;
+        lastBounds.setEmpty();lastCorner=lastCornerPower=-1;lastTime=lastInputReport=0;primed=false;tonesSet=true;reportedCaptured=-1;
     }
 }

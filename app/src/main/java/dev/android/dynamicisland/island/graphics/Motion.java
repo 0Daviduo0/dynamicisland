@@ -11,8 +11,8 @@ public final class Motion {
     public static final Motion PILL_GROW = new Motion(0.42f, 0.6f);
     /** The pill growing in height when it appears: a drop that lands and bounces once. */
     public static final Motion PILL_DROP = new Motion(0.36f, 0.55f);
-    /** The pill resizing for new content. */
-    public static final Motion PILL_RESIZE = new Motion(0.34f, 0.72f);
+    /** The pill resizing for new content: springy, so a wider pill swells past its size and settles back. */
+    public static final Motion PILL_RESIZE = new Motion(0.38f, 0.58f);
     /** The pill shrinking back into the camera hole when the island hides. */
     public static final Motion PILL_SHRINK = new Motion(0.32f, 0.78f);
     /** The pill pulling in while its cards open, as if it poured itself into them. */

@@ -61,7 +61,6 @@ final class QuickShareSendWatch {
         }
     }
 
-    /** A notification of the outgoing channel: progress starts the watch, anything else for the share ends it. */
     /** The watched notification went away without an end notification: last read, then stop. */
     private static void cancelled(int id) {
         if (id != watchedId || worker == null) return;
@@ -71,6 +70,7 @@ final class QuickShareSendWatch {
         });
     }
 
+    /** A notification of the outgoing channel: progress starts the watch, anything else for the share ends it. */
     private static void seen(Context ctx, int notificationId, Notification n) {
         if (ctx == null || n == null || n.extras == null || !QuickShareState.SEND_CHANNEL.equals(n.getChannelId())) return;
         String id = n.extras.getString(QuickShareState.EXTRA_SHARE_ID);

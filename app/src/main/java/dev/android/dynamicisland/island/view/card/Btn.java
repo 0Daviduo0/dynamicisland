@@ -19,7 +19,12 @@ public final class Btn {
     /** Vector glyph id from {@code Glyphs}, or 0 for none. */
     int glyph;
     Drawable icon;
+    /** Size of {@link #icon} relative to the default share of the button. */
+    float iconScale = 1.0f;
     String label;
+    /** {@link #label} ellipsized for {@link #fitWidth} at {@link #fitSize}; set on first draw, not per frame. */
+    String fitLabel;
+    float fitWidth = -1, fitSize = -1;
     /** Bounds in card-body coordinates. */
     public final RectF r;
     /** Direct callback to run on tap (media controls), or null when {@link #action} is used. */

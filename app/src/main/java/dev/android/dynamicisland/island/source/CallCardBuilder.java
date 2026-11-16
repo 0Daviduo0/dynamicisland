@@ -53,14 +53,23 @@ final class CallCardBuilder {
     private final Runnable afterSpeakerToggle;
     /** Whether the phone is ringing with a call nobody has answered yet. */
     private BooleanSupplier phoneRinging = this::telephonyRinging;
+    private static final int PHOTO_CACHE_SIZE = 16;
+    /** Caller pictures already checked for readability, by call key: {source Icon, shown Drawable or null}. */
+    private final java.util.Map<String, Object[]> photos = new java.util.HashMap<>();
+    private final AppLook apps;
 
     CallCardBuilder(Context ctx, IconLoader icons, OaReader reader, Runnable afterSpeakerToggle, WhatsAppCallClock callClock) {
         this.ctx = ctx;
+        this.apps = AppLook.shared(ctx);
         this.icons = icons;
         this.reader = reader;
         this.callClock = callClock;
         this.afterSpeakerToggle = afterSpeakerToggle;
+        this.contacts = new ContactPhotos(ctx, afterSpeakerToggle);
     }
+
+    /** Address-book pictures; a loaded one triggers the same refresh as a speaker toggle. */
+    private final ContactPhotos contacts;
 
     /** Adds the card of the ongoing call, if any; {@code controller} is System UI's call controller (may be null). */
     void collect(Object controller, List<IslandItem> out, Collection<String> packages, Set<String> hiddenByForeground) {
@@ -176,6 +185,24 @@ final class CallCardBuilder {
             Drawable photo = icons.load((Icon) Refl.get(nowBar, "mNowbarIcon"));
             if (photo != null) {
                 it.cardImage = photo;
+                it.cardImageRound = true;
+            }
+        }
+        Notification callNotification = callNotification(key);
+        Drawable person = contactPhoto(callNotification, it.title, it.appName);
+        if (person == null) person = callerPhoto(key, callNotification, icons.appIcon(pkg), true);
+        if (person != null) {
+            it.cardImage = person; // the contact's own picture beats the now bar's, which can be the dialer's logo
+            it.cardImageRound = true;
+        } else if (it.cardImage == null || !(nowBar != null && Refl.get(nowBar, "mNowbarIcon") != null)) {
+            // no photo from the now bar: the call notification's large icon, else the caller's initials
+            Drawable photo = callerPhoto(key, callNotification, it.cardImage, false);
+            if (photo == null && it.title != null && !String.valueOf(it.title).equals(it.appName)) {
+                photo = dev.android.dynamicisland.island.graphics.Monogram.of(it.title);
+            }
+            if (photo != null) {
+                it.cardImage = photo;
+                it.cardImageRound = true;
             }
         }
         boolean ringing = isRinging(info, pkg);
@@ -187,8 +214,7 @@ final class CallCardBuilder {
             it.trailing = IslandItem.Trailing.TEXT;
             it.trailingText = named ? it.title : IslandText.get(ctx, "island_incoming_call");
             if (named) it.subtitle = IslandText.get(ctx, "island_incoming_call");
-            if (it.cardImage != null && it.cardImage != it.icon && nowBar != null
-                    && Refl.get(nowBar, "mNowbarIcon") != null) {
+            if (it.cardImage != null && it.cardImage != it.icon && it.cardImageRound) {
                 // the caller's contact photo leads the pill too
                 it.icon = it.cardImage;
                 it.iconIsImage = true;
@@ -201,6 +227,61 @@ final class CallCardBuilder {
         return it;
     }
 
+    /** The caller's address-book picture, by the CallStyle person's URI or the shown name / number; null until loaded. */
+    private Drawable contactPhoto(Notification n, CharSequence title, CharSequence appName) {
+        String uri = null;
+        CharSequence shown = title != null && !String.valueOf(title).equals(String.valueOf(appName)) ? title : null;
+        try {
+            Object person = n == null ? null : n.extras.getParcelable(Notification.EXTRA_CALL_PERSON);
+            if (person instanceof android.app.Person) {
+                android.app.Person p = (android.app.Person) person;
+                uri = p.getUri();
+                if (shown == null) shown = p.getName();
+            }
+        } catch (Throwable t) {
+            // no notification to read: shown caller still works
+        }
+        return contacts.photo(uri, shown);
+    }
+
+    /** The call notification behind this key, read once per card build; null when there is none. */
+    private Notification callNotification(String key) {
+        try {
+            Object data = reader.findByNotificationKey(key);
+            return data == null ? null : new OaActivity(data).notification;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** The caller's picture from the call notification (CallStyle person, then large icon), or null. */
+    private Drawable callerPhoto(String key, Notification n, Drawable appIcon, boolean personOnly) {
+        try {
+            if (n == null) return null;
+            Object person = n.extras.getParcelable(Notification.EXTRA_CALL_PERSON);
+            Icon icon = person instanceof android.app.Person ? ((android.app.Person) person).getIcon() : null;
+            if (icon == null && !personOnly) icon = n.getLargeIcon();
+            if (icon == null) return null;
+            // the card is rebuilt on every refresh during a call: render and sample the picture once per icon
+            String cacheKey = key + (personOnly ? "#person" : "#large");
+            Object[] known = photos.get(cacheKey);
+            if (known != null && known[0] == icon) return copy((Drawable) known[1]);
+            Drawable picture = icons.load(icon);
+            Drawable shown = picture == null ? null
+                    : dev.android.dynamicisland.island.detect.IconContrast.readable(ctx, picture, appIcon);
+            Drawable result = shown == appIcon ? null : shown; // swapped back for the app icon: not a real picture
+            if (photos.size() > PHOTO_CACHE_SIZE) photos.clear();
+            photos.put(cacheKey, new Object[] {icon, result});
+            return copy(result);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static Drawable copy(Drawable d) {
+        return d == null || d.getConstantState() == null ? d : d.getConstantState().newDrawable().mutate();
+    }
+
     /** The package in a notification key ("user|package|id|tag|uid"), or null. */
     static String packageOfKey(String key) {
         String[] parts = key.split("\\|", 3);
@@ -208,12 +289,7 @@ final class CallCardBuilder {
     }
 
     private String labelOf(String pkg) {
-        try {
-            PackageManager pm = ctx.getPackageManager();
-            return String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)));
-        } catch (Throwable t) {
-            return pkg;
-        }
+        return apps.label(pkg);
     }
 
     private static Drawable copyOfShownIcon(Object iconView) {

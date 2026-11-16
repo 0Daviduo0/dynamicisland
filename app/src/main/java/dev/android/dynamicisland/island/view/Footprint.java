@@ -1,5 +1,7 @@
 package dev.android.dynamicisland.island.view;
 
+import dev.android.dynamicisland.settings.ModuleSettings;
+
 import android.graphics.Region;
 import android.graphics.RectF;
 
@@ -30,6 +32,18 @@ final class Footprint {
     /** Union of the pill, the bubble and every card that overlaps the pill's row. */
     void coverage(RectF out) {
         shapes.main(out);
+        if (scene.mode == Mode.EXPANDED && ModuleSettings.expandAroundHole()) {
+            // the card opens around the camera hole, over the status bar row: everything it covers there is covered
+            float rowTop = m.cy - (m.pillH / 2.0f);
+            float rowBottom = m.cy + (m.pillH / 2.0f);
+            for (Card c : scene.cards) {
+                shapes.card(c, other);
+                if (other.top < rowBottom && other.bottom > rowTop) {
+                    out.union(other);
+                }
+            }
+            return;
+        }
         if (scene.mode == Mode.EXPANDED) {
             // an opened card floats over the bar on its own: only the compact pill it grew from keeps icons hidden
             float half = Math.min(out.width(), compactW) / 2.0f;

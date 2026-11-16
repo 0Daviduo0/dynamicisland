@@ -57,22 +57,71 @@ public final class RecordingBody extends CardBody {
         buttons.add(button);
     }
 
+    /** The buttons, the tallest thing in the row, leave this much free above them. */
+    @Override protected float bandOverlap() {
+        float tallest = 0;
+        for (Btn b : buttons) tallest = Math.max(tallest, b.r.height());
+        return Math.max(0, (h - Math.max(tallest, owner.dp(38))) / 2f - owner.dp(4));
+    }
+
+    /** Height of the time + buttons row when it sits under the hole. */
+    private float rowShift;
+
+    /**
+     * Like the call card: the recording symbol left of the hole, the live waveform right of it, and the
+     * time with pause / stop under the hole. Nothing of the compact pill is drawn twice.
+     */
+    @Override protected float layoutBesideHole() {
+        if (leftLane(pad) < owner.dp(28) || rightLane(pad) < owner.dp(40)) return -1.0f;
+        // the buttons (18dp from the row's top) start just under the hole
+        rowShift = Math.max(0f, holeBottom - owner.dp(10));
+        shiftButtons(rowShift);
+        shadeFade = owner.dp(16);
+        return h + rowShift;
+    }
+
+    @Override protected void onClearHole() {
+        rowShift = 0f;
+    }
+
+    private static final int RED = dev.android.dynamicisland.island.graphics.Colors.RECORDING_RED;
+
     @Override public void draw(Canvas canvas, float x, float y, float alpha, long elapsed) {
         float a = alpha * rowAlpha(elapsed, 0);
-        float middle = y + h / 2f;
         String value = owner.trailingString(item);
         if (value == null) value = item.trailingText == null ? "0:00" : item.trailingText.toString();
         time.setTextSize(owner.dp(32));
+        time.setColor(Colors.withAlpha(RED, a));
+        Paint.FontMetrics fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(time);
+        if (holeRow) {
+            // hole row: symbol on the left, waveform on the right
+            float symbol = owner.dp(22);
+            float mid = y + holeMid;
+            if (item.icon != null) {
+                owner.drawDrawable(canvas, item.icon, item.iconIsImage, RED, x + pad, mid - symbol / 2f, symbol, a, 0f);
+            }
+            float waveWidth = Math.min(owner.dp(92), rightLane(pad) - owner.dp(6));
+            owner.drawRecordingWaveform(canvas, item, x + w - pad - waveWidth, mid, waveWidth, owner.dp(26), a);
+            // under the hole: the time, left of the buttons
+            float middle = y + rowShift + (h - rowShift) / 2f;
+            float room = controlsLeft - pad - owner.dp(12);
+            float clockWidth = time.measureText(value);
+            if (clockWidth > room) time.setTextSize(time.getTextSize() * room / clockWidth);
+            fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(time);
+            owner.drawTime(canvas, timeKey(0, "#voice"), value, time, x + pad, middle - (fm.ascent + fm.descent) / 2f, false);
+            drawButtons(canvas, x, y, a);
+            return;
+        }
+        float middle = y + (h - topInset) / 2f; // same centre as the buttons, whose rects ignore the band
         float usable = controlsLeft - pad - owner.dp(12);
         float clockWidth = time.measureText(value);
         float waveWidth = Math.max(owner.dp(24), Math.min(owner.dp(92), usable - clockWidth - owner.dp(14)));
         float clockRoom = Math.max(owner.dp(32), usable - waveWidth - owner.dp(12));
         if (clockWidth > clockRoom) time.setTextSize(time.getTextSize() * clockRoom / clockWidth);
-        owner.drawRecordingWaveform(canvas, item, x + pad, middle, waveWidth, owner.dp(38), a);
-        time.setColor(Colors.withAlpha(0xFFFF5B62, a));
-        Paint.FontMetrics fm = time.getFontMetrics();
-        float textX = x + pad + waveWidth + owner.dp(12);
-        owner.drawTime(canvas, item.key + "#voice", value, time, textX, middle - (fm.ascent + fm.descent) / 2f, false);
+        fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(time);
+        // the time on the left, the waveform next to the buttons
+        owner.drawTime(canvas, timeKey(0, "#voice"), value, time, x + pad, middle - (fm.ascent + fm.descent) / 2f, false);
+        owner.drawRecordingWaveform(canvas, item, x + controlsLeft - owner.dp(12) - waveWidth, middle, waveWidth, owner.dp(38), a);
         drawButtons(canvas, x, y, a);
     }
 }

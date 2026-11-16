@@ -44,9 +44,9 @@ final class WaveformPaletteTransition {
             }
             // Capture the DISPLAYED stops, not the previous target: an interrupted fade cannot jump.
             float t = fraction(now);
-            fromFirst = blend(fromFirst, toFirst, t);
-            fromMiddle = blend(fromMiddle, toMiddle, t);
-            fromLast = blend(fromLast, toLast, t);
+            fromFirst = dev.android.dynamicisland.island.graphics.Colors.blend(fromFirst, toFirst, t);
+            fromMiddle = dev.android.dynamicisland.island.graphics.Colors.blend(fromMiddle, toMiddle, t);
+            fromLast = dev.android.dynamicisland.island.graphics.Colors.blend(fromLast, toLast, t);
             start = now;
         }
         toPrimary = primary;
@@ -62,25 +62,15 @@ final class WaveformPaletteTransition {
     /** Samples the same three evenly spaced stops used by the horizontal shader. No allocations. */
     int colorAt(float position, long now) {
         float t = fraction(now);
-        int first = blend(fromFirst, toFirst, t);
-        int middle = blend(fromMiddle, toMiddle, t);
-        int last = blend(fromLast, toLast, t);
+        int first = dev.android.dynamicisland.island.graphics.Colors.blend(fromFirst, toFirst, t);
+        int middle = dev.android.dynamicisland.island.graphics.Colors.blend(fromMiddle, toMiddle, t);
+        int last = dev.android.dynamicisland.island.graphics.Colors.blend(fromLast, toLast, t);
         float p = Float.isNaN(position) ? 0.0f : Easing.clamp01(position);
-        return p <= 0.5f ? blend(first, middle, p * 2.0f)
-                : blend(middle, last, (p - 0.5f) * 2.0f);
+        return p <= 0.5f ? dev.android.dynamicisland.island.graphics.Colors.blend(first, middle, p * 2.0f)
+                : dev.android.dynamicisland.island.graphics.Colors.blend(middle, last, (p - 0.5f) * 2.0f);
     }
 
     private float fraction(long now) {
         return Easing.easeInOut((now - start) / (float) FADE_MS);
-    }
-
-    /** Per-channel rounded ARGB interpolation, with no android.graphics dependency. */
-    private static int blend(int from, int to, float t) {
-        float keep = 1.0f - t;
-        int a = Math.round((from >>> 24) * keep + (to >>> 24) * t);
-        int r = Math.round(((from >> 16) & 255) * keep + ((to >> 16) & 255) * t);
-        int g = Math.round(((from >> 8) & 255) * keep + ((to >> 8) & 255) * t);
-        int b = Math.round((from & 255) * keep + (to & 255) * t);
-        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 }

@@ -112,13 +112,13 @@ public final class QuickShareState {
         return out;
     }
 
-    /** What the card shows for this content: image, video, contact, wifi, link, text, audio, app or file. */
     /** The same session with another receive status: a sheet that closed mid-transfer ended it one way or the other. */
     public QuickShareState withStatus(String status) {
         return new QuickShareState(id, status, acceptResult, sender, fileName, text, fileCount, doneCount, progress,
                 contentType, fileType, totalBytes);
     }
 
+    /** What the card shows for this content: image, video, contact, wifi, link, text, audio, app or file. */
     public String kind() {
         String c = contentType == null ? "" : contentType;
         String f = fileType == null ? "" : fileType;

@@ -25,8 +25,8 @@ import java.util.Set;
  */
 final class QuickShareSends {
     private static final int ACCENT = 0xFF3E91FF;
-    private static final int DONE_GREEN = 0xFF3DB653;
-    private static final int FAILED_RED = 0xFFFF5B62;
+    private static final int DONE_GREEN = dev.android.dynamicisland.island.graphics.Colors.CALL_GREEN;
+    private static final int FAILED_RED = dev.android.dynamicisland.island.graphics.Colors.RECORDING_RED;
     private static final long END_SHOWN_MS = 5000;
     /** An end notification older than this was already there (System UI restart, shade rebuild): no new card. */
     private static final long END_FRESH_MS = 15000;

@@ -246,7 +246,7 @@ final class TouchController {
         if(downCard.iMode && !cardReady(downCard)) return;
         if (downCard.body instanceof MediaBody) {
             MediaBody media = (MediaBody) downCard.body;
-            if (media.onSeekBar(downX - left, downY - slot.top)) {
+            if (media.onSeekBar(downX - left, downY - slot.top - media.topInset)) {
                 view.seekBody = media;
                 view.seekFraction = media.fractionAt(downX - left);
                 view.getParent().requestDisallowInterceptTouchEvent(true);
@@ -255,7 +255,7 @@ final class TouchController {
         }
         if (downCard.body instanceof SliderBody) {
             SliderBody slider = (SliderBody) downCard.body;
-            if (slider.onSlider(downX - left, downY - slot.top)) {
+            if (slider.onSlider(downX - left, downY - slot.top - slider.topInset)) {
                 // relative drag: the bar stays where it is and moves with the finger, it does not jump to the touch
                 sliderStart = slider.shownValue();
                 view.sliderBody = slider;

@@ -434,8 +434,8 @@ final class Director {
             scheduleAutoCollapse(autoCollapseMs>0 ? autoCollapseMs : ModuleSettings.autoCollapseMs());
             return;
         }
-        if (show.isEmpty()) {
-            return;
+        if (show.isEmpty() || !show.get(0).opensCard()) {
+            return; // an item with nothing more than its pill never opens, not even on its own
         }
         boolean wasExpanded = scene.mode == Mode.EXPANDED;
         if (!wasExpanded) scene.contentHandoff = new ContentHandoff(scene.contentHandoff, true, IslandView.now());
@@ -524,9 +524,18 @@ final class Director {
             if(!visible.isEmpty()) scene.iMode.open(visible.get(0).key,true);
             return;
         }
+        List<IslandItem> show = new java.util.ArrayList<>(scene.stackItems(MAX_CARDS));
+        show.removeIf(it -> !it.opensCard());
+        if (show.isEmpty()) {
+            // nothing more behind the pill (charging, ringer, ...): it only bounces under the finger
+            sp.pulse.impulse(1.2f);
+            Haptics.perform(view, android.view.HapticFeedbackConstants.CONTEXT_CLICK);
+            view.scheduleFrame();
+            return;
+        }
         scene.peekOpen = false;
         peekKey = null;
-        expand(scene.stackItems(MAX_CARDS), ModuleSettings.autoCollapseMs());
+        expand(show, ModuleSettings.autoCollapseMs());
     }
 
     void collapse() {
@@ -609,6 +618,9 @@ final class Director {
         for (IslandItem it : show) {
             Card c = scene.findCard(it.key);
             CardBody body = bodies.create(it, w, false);
+            if (next.isEmpty()) {
+                m.fitAroundHole(body); // the top card wraps the camera hole when the island opens around it
+            }
             if (c != null && c.leaving && c.handoff != null && !c.handoff.expanding
                     && scene.contentHandoff != null && scene.contentHandoff.expanding) {
                 // A quick reopen retargets the same moving card instead of duplicating it at the pill.

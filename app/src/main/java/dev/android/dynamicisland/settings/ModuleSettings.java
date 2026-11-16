@@ -60,11 +60,12 @@ public final class ModuleSettings {
     /** Keeps an empty pill around the camera while nothing is happening (default off). */
     public static final String KEY_ALWAYS_VISIBLE = "always_visible_island";
     public static final String KEY_NOTCH_STYLE = "notch_style";
-    /** Where the island lives: around the camera (dynamic island) or in a band under the apps (dynamic inset). */
     /** The charging details card is shown as lines of text instead of the battery gauge (default off). */
     public static final String KEY_CHARGING_TEXT = "charging_text_lines";
     /** A swipe up on the small pill hides it (iMotion). On by default; off keeps the pill where it is. */
     public static final String KEY_SWIPE_UP_HIDES = "swipe_up_hides";
+    /** Open cards around the camera hole, from the pill's own top (iOS), instead of below it. */
+    public static final String KEY_EXPAND_AROUND_HOLE = "expand_around_hole";
     /** Where the island sits: {@link #ANCHOR_AUTO} (on the camera hole), the middle, the left or the right of the status bar. */
     public static final String KEY_PILL_ANCHOR = "pill_anchor";
     /** Outline policy: automatic contrast detection, always visible, or never drawn. */
@@ -110,6 +111,8 @@ public final class ModuleSettings {
     public static final String KEY_PILL_KEEP_WIDTH = "pill_keep_width";
     public static final String KEY_CARD_CORNER_RADIUS_DP = "card_corner_radius_dp";
     public static final String KEY_CUSTOM_CARD_ROUNDNESS = "custom_card_roundness";
+    /** Expanded cards take the screen corners' curve, less the gap to the screen edge (as iOS does). */
+    public static final String KEY_CONCENTRIC_CORNERS = "concentric_corners";
     public static final int PILL_H_MIN_PCT = -20;
     public static final int PILL_H_MAX_PCT = 40;
     public static final int PILL_MIN_W_MAX_DP = 420;
@@ -216,6 +219,7 @@ public final class ModuleSettings {
     private static volatile boolean notchStyle;
     private static volatile boolean chargingText;
     private static volatile boolean swipeUpHides = true;
+    private static volatile boolean expandAroundHole;
     private static volatile boolean headsUpIsland = true;
     private static volatile boolean allNotifications;
     private static volatile boolean foregroundNotifications;
@@ -244,6 +248,7 @@ public final class ModuleSettings {
     private static volatile int transitionBlurMode = TRANSITION_BLUR_AUTO;
     private static volatile int cardCornerRadiusDp = 28;
     private static volatile boolean customCardRoundness;
+    private static volatile boolean concentricCorners;
     private static volatile int pillXDp;
     private static volatile int pillYDp;
     /** Told (on the reload thread) when the island's position settings changed. */
@@ -327,12 +332,12 @@ public final class ModuleSettings {
         }
     }
 
-    /** True while the settings app is moving the island: it shows a sample item so there is something to move. */
     /** The sample item holds a long text, so the pill grows as wide as it is allowed to. */
     public static boolean previewSampleLong() {
         return sampleLong;
     }
 
+    /** True while the settings app is moving the island: it shows a sample item so there is something to move. */
     public static boolean placementPreviewActive() {
         return android.os.SystemClock.uptimeMillis() < previewUntil || System.currentTimeMillis() < previewWallUntil;
     }
@@ -575,6 +580,7 @@ public final class ModuleSettings {
             notchStyle = source.getBoolean(KEY_NOTCH_STYLE, false);
             chargingText = source.getBoolean(KEY_CHARGING_TEXT, false);
             swipeUpHides = source.getBoolean(KEY_SWIPE_UP_HIDES, true);
+            expandAroundHole = source.getBoolean(KEY_EXPAND_AROUND_HOLE, false);
             pillOutlineMode = readPillOutlineMode(source);
             transitionBlurMode = readTransitionBlurMode(source);
             headsUpIsland = source.getBoolean(KEY_HEADS_UP_ISLAND, true);
@@ -677,6 +683,7 @@ public final class ModuleSettings {
         notchStyle = settings.getBoolean(KEY_NOTCH_STYLE, false);
         chargingText = settings.getBoolean(KEY_CHARGING_TEXT, false);
         swipeUpHides = settings.getBoolean(KEY_SWIPE_UP_HIDES, true);
+        expandAroundHole = settings.getBoolean(KEY_EXPAND_AROUND_HOLE, false);
         pillOutlineMode = readPillOutlineMode(settings);
         transitionBlurMode = readTransitionBlurMode(settings);
         lowPerformance = settings.getBoolean(KEY_LOW_PERFORMANCE, false);
@@ -761,6 +768,7 @@ public final class ModuleSettings {
     public static int holeTextPaddingDp() { ensureStarted(); return holeTextPaddingDp; }
     public static int cardCornerRadiusDp() { ensureStarted(); return cardCornerRadiusDp; }
     public static boolean customCardRoundness() { ensureStarted(); return customCardRoundness; }
+    public static boolean concentricCorners() { ensureStarted(); return concentricCorners; }
 
     private static int clampHoleTextPadding(int value) {
         return Math.max(0, Math.min(HOLE_TEXT_PADDING_MAX_DP, value));
@@ -768,6 +776,7 @@ public final class ModuleSettings {
 
     private static void readOptionalDeviceSettings(SharedPreferences source) {
         customCardRoundness = source.getBoolean(KEY_CUSTOM_CARD_ROUNDNESS, false);
+        concentricCorners = source.getBoolean(KEY_CONCENTRIC_CORNERS, false);
         cardCornerRadiusDp = Math.max(0, Math.min(48, source.getInt(KEY_CARD_CORNER_RADIUS_DP, 28)));
         stockChargingAnimation = source.getBoolean(KEY_STOCK_CHARGING_ANIMATION, false);
         concurrentRecordingInput = source.getBoolean(KEY_CONCURRENT_RECORDING_INPUT, false);
@@ -956,8 +965,6 @@ public final class ModuleSettings {
         return appFilter.allows(packageName);
     }
 
-    /** Calls from third-party calling apps shown on the island, not only the phone app's. */
-    /** Live voice levels beside an ongoing call in the compact pill. */
     /** The compact call pill shows the call's running time instead of the voice bars. */
     public static boolean callShowTime() {
         ensureStarted();
@@ -1010,13 +1017,13 @@ public final class ModuleSettings {
         return thirdPartyCalls;
     }
 
-    /** Do Not Disturb / airplane / power saving / flashlight / hotspot / auto-rotate feedback. */
     /** Every new notification, also the quiet ones that would not pop up as a banner, gets an island card. */
     public static boolean allNotifications() {
         ensureStarted();
         return allNotifications;
     }
 
+    /** Do Not Disturb / airplane / power saving / flashlight / hotspot / auto-rotate feedback. */
     public static boolean eventToggles() {
         ensureStarted();
         return eventToggles;
@@ -1048,13 +1055,12 @@ public final class ModuleSettings {
     public static boolean alwaysVisible() { ensureStarted(); return alwaysVisible; }
     /** The compact pill drawn as a notch that hangs from the top edge of the screen (for phones with a notch). */
     public static boolean notchStyle() { ensureStarted(); return notchStyle; }
-    /** The "dynamic inset" style: apps end above a band at the bottom of the screen. */
-
     /** The charging details card as lines of text (live reading first, then the statistics) instead of the gauge. */
     public static boolean chargingTextLines() { ensureStarted(); return chargingText; }
 
     /** A swipe up on the small pill hides it (default on). */
     public static boolean swipeUpHides() { ensureStarted(); return swipeUpHides; }
+    public static boolean expandAroundHole() { ensureStarted(); return expandAroundHole; }
 
     public static boolean legacyAnimation() {
         ensureStarted();

@@ -36,7 +36,10 @@ final class IMode {
     private final Path clip = new Path();
     private final Path glowExclusion = new Path();
     private final RectF glowBounds = new RectF();
-    private final Path outlineOcclusion=new Path(),outlineSurface=new Path();
+    private final Path outlineSurface=new Path();
+    /** Outlines of the cards drawn so far this frame, reused between frames. */
+    private final java.util.ArrayList<Path> occluderPaths=new java.util.ArrayList<>();
+    private int occluders;
     private final RectF outlineBounds=new RectF();
     private final Path gatherMask=new Path();
     private final RectF gatherOther=new RectF();
@@ -328,7 +331,9 @@ final class IMode {
         layout(false);
     }
     private void layout(boolean preserveEntryOrigins) {
-        List<Node> row=rowNodes();
+        // opened around the camera the card is the island: no pill (nor the other activities) stays on top of it, as on iOS
+        boolean cardIsIsland=scene.mode==Mode.EXPANDED && selected!=null && ModuleSettings.expandAroundHole();
+        List<Node> row=cardIsIsland ? new ArrayList<>() : rowNodes();
         rowCount=row.size();
         scene.springs.split.snapTo(row.size()>1 ? 1 : 0);
         RectF frameMain=new RectF(),bubble=new RectF();rowFrame(row,frameMain,bubble);
@@ -656,10 +661,19 @@ final class IMode {
         }
     }
 
+    /** Touch reaction of an activity that does not open: a quick squeeze and a springy rebound. */
+    private void bounce(Node node) {
+        node.press.snapTo(.93f);
+        node.press.animateTo(1,.32f,.42f);
+        Haptics.perform(view,android.view.HapticFeedbackConstants.CONTEXT_CLICK);
+        view.scheduleFrame();
+    }
+
     void open(String key, boolean manual) {
         if(gestureHidden) return;
         Node node=nodes.get(key);
         if(node==null || node.removed || scene.sleeping || scene.suppressed || scene.held) return;
+        if(!node.item.opensCard()) { if(manual) bounce(node); return; } // nothing more to show: no card
         cancelReturn();
         finishCompactInteraction();
         abortSwipe();
@@ -862,7 +876,7 @@ final class IMode {
     }
     private void targetExpanded(Card c) {
         float width=m.cardWidth();
-        c.targetW=width; c.targetH=c.body.h; c.targetCy=m.stackTop()+c.body.h/2;
+        m.fitAroundHole(c.body); c.targetW=width; c.targetH=c.body.h; c.targetCy=m.stackTop()+c.body.h/2;
         c.cx.animateTo(m.centredLeft(width)+width/2,.36f,.90f);
         c.cy.animateTo(c.targetCy,.42f,.88f);
         c.w.animateTo(width,.42f,.90f);
@@ -1227,7 +1241,9 @@ final class IMode {
                         card.cy.value()+card.h.value()/2+m.dp(16),paint);
             }
         }
-        if(compactPage!=null) { drawCompactPage(canvas);return; }
+        // paging open cards: the cards sit round the hole themselves, the status row stays hidden under them
+        // (drawing its page here put the compact pills through the card being looked at)
+        if(compactPage!=null && !compactPage.header) { drawCompactPage(canvas);return; }
         float gate=IslandView.clamp01(scene.springs.shadeGate.value());
         float contentAlpha=IslandView.clamp01((gate-.45f)/.4f);
         Node pairMain=null,pairBubble=null;
@@ -1262,13 +1278,12 @@ final class IMode {
                 int strokeSave=canvas.save();
                 if(n==pairMain) canvas.clipOutPath(liquidJoin);
                 if(gate<.999f) {
-                    gatherMask.reset();
+                    // clipping out each pill in turn equals clipping out their union, without a Path.op every frame
                     for(Node other:nodes.values()) if(other!=n && other.alpha.value()>.95f && !ownsSurface(other.item.key)) {
                         other.bounds(gatherOther);shadeBounds(gatherOther,gatherOther);
                         outlineSurface.reset();outlineSurface.addRoundRect(gatherOther,gatherOther.height()/2,gatherOther.height()/2,Path.Direction.CW);
-                        gatherMask.op(outlineSurface,Path.Op.UNION);
+                        canvas.clipOutPath(outlineSurface);
                     }
-                    canvas.clipOutPath(gatherMask);
                 }
                 paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(m.outlineW);
                 paint.setColor(Colors.withAlpha(Colors.PILL_OUTLINE,scene.pillOutlineOpacity()));
@@ -1370,7 +1385,7 @@ final class IMode {
     private void drawMovingOutlines(Canvas canvas) {
         float contrast=outlineOpacity();
         if(contrast<.002f || scene.cards.isEmpty()) return;
-        outlineOcclusion.reset();
+        occluders=0;
         for(Card card:scene.cards) {
             view.computeCard(card,outlineBounds);
             float opacity=IslandView.clamp01(card.iModeOpacity.value());
@@ -1384,7 +1399,8 @@ final class IMode {
             // latter on the same exterior contour before, during and after the native card slot.
             float alpha=contrast*opacity*(1-opening);
             if(alpha>.002f) {
-                int save=canvas.save();canvas.clipOutPath(outlineOcclusion);
+                int save=canvas.save();
+                for(int o=0;o<occluders;o++)canvas.clipOutPath(occluderPaths.get(o)); // = clipping out their union
                 paint.setShader(null);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(m.outlineW);
                 paint.setColor(Colors.withAlpha(Colors.PILL_OUTLINE,alpha));
                 canvas.drawPath(outlineSurface,paint);
@@ -1392,7 +1408,9 @@ final class IMode {
             }
             // Native slots are painted below this overlay; do not put a departing card's edge
             // on top of a nearer card while they overlap.
-            outlineOcclusion.op(outlineSurface,Path.Op.UNION);
+            // (kept as separate paths: a Path.op union per card per frame is CPU-heavy)
+            if(occluders==occluderPaths.size())occluderPaths.add(new Path());
+            occluderPaths.get(occluders++).set(outlineSurface);
         }
     }
     private void drawCompact(Canvas canvas,Node n,RectF r,float iconOnly,float alpha) {

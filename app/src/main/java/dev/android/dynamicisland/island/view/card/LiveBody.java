@@ -5,7 +5,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.text.StaticLayout;
 import android.text.TextPaint;
-import android.text.TextUtils;
 import dev.android.dynamicisland.island.graphics.Colors;
 import dev.android.dynamicisland.island.model.IslandItem;
 import dev.android.dynamicisland.island.view.IslandView;
@@ -167,7 +166,7 @@ public final class LiveBody extends CardBody {
     }
 
     private float lineHeight(TextPaint paint) {
-        Paint.FontMetrics fm = paint.getFontMetrics();
+        Paint.FontMetrics fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(paint);
         return fm.descent - fm.ascent;
     }
 
@@ -213,10 +212,150 @@ public final class LiveBody extends CardBody {
         return size;
     }
 
+    // ---- around the camera: the iOS expanded layout --------------------------------------------------
+
+    /** Leading hero symbol size; 0 when the card opened around the camera without one (or not at all). */
+    private float heroSize;
+    /** Content top (px from the body top) and the text column, in hero mode. */
+    private float heroTop, heroTextX, heroTextW, heroBlockH;
+    private StaticLayout heroTitle, heroSecondary, heroDetail;
+    private float heroTitleY, heroSecondaryY, heroDetailY, heroProgressTop = -1.0f;
+    /** The live value beside the title (a time, a count), only when the text does not already say it. */
+    private String heroValue;
+    private float heroValueW;
+
+    /**
+     * Around the camera hole the card follows Apple's Live Activity layout: nothing sits beside the camera
+     * (no app name, no repeated value in the corners), the content starts right under it with the activity's
+     * symbol large on the leading side, the text next to it, and a live value at the end of the title row only
+     * when the text does not say it already. Sports cards keep their team row and band.
+     */
+    @Override
+    protected float layoutBesideHole() {
+        if (teams) return -1.0f;
+        float gap = owner.dp(12.0f);
+        heroSize = item.icon != null ? owner.dp(40.0f) : 0.0f;
+        heroTop = holeBottom + owner.dp(6.0f);
+        heroTextX = pad + (heroSize > 0 ? heroSize + gap : 0.0f);
+        heroValue = liveValue();
+        heroValueW = heroValue == null ? 0.0f : IslandView.timeWidth(owner.titlePaint, heroValue) + owner.dp(10.0f);
+        heroTextW = Math.max(owner.dp(40.0f), w - pad - heroTextX);
+        int titleW = Math.round(Math.max(owner.dp(40.0f), heroTextW - heroValueW));
+        int textW = Math.round(heroTextW);
+        float y = 0.0f;
+        CharSequence primary = item.title != null ? item.title : item.appName;
+        heroTitle = titleChrono || primary == null ? null : IslandView.layout(primary, owner.titlePaint, titleW, 2);
+        heroTitleY = y;
+        if (titleChrono) y += lineHeight(owner.titlePaint);
+        else if (heroTitle != null) y += heroTitle.getHeight();
+        heroSecondaryY = y + (y > 0 ? owner.dp(2.0f) : 0.0f);
+        heroSecondary = null;
+        if (description != null) {
+            heroSecondary = IslandView.layout(item.description, owner.bodyPaint, textW, Math.max(1, Math.min(8, item.descriptionMaxLines)));
+        } else if (!subChrono && subtitle != null) {
+            heroSecondary = IslandView.layout(subtitle.getText(), owner.bodyPaint, Math.max(1, textW - Math.round(secIndent)), 2);
+        }
+        if (heroSecondary != null) y = heroSecondaryY + heroSecondary.getHeight();
+        else if (subChrono) y = heroSecondaryY + lineHeight(owner.bodyPaint);
+        heroDetail = item.detail != null ? IslandView.layout(item.detail, owner.bodyPaint, textW, 1) : null;
+        heroDetailY = y + owner.dp(2.0f);
+        if (heroDetail != null) y = heroDetailY + heroDetail.getHeight();
+        heroBlockH = Math.max(heroSize, y);
+        float bottom = heroTop + heroBlockH;
+        heroProgressTop = -1.0f;
+        if (progressTop >= 0.0f) {
+            heroProgressTop = bottom + owner.dp(14.0f);
+            bottom = heroProgressTop + progressBoxH;
+        }
+        float height = bottom + pad;
+        if (actionsTop >= 0.0f) {
+            float row = h - pad - actionsTop;
+            float top = bottom + owner.dp(14.0f);
+            shiftButtons(top - actionsTop);
+            height = top + row + pad;
+        }
+        return height;
+    }
+
+    @Override
+    protected void onClearHole() {
+        heroSize = 0.0f;
+        heroTitle = heroSecondary = heroDetail = null;
+        heroValue = null;
+    }
+
+    /** What the pill shows at its trailing edge, when the card's own text does not already carry it. */
+    private String liveValue() {
+        if (titleChrono || subChrono) return null;
+        String value = owner.trailingString(item);
+        if (value == null || value.trim().isEmpty()) return null;
+        if (contains(item.title, value) || contains(item.subtitle, value) || contains(item.description, value)
+                || contains(item.detail, value)) {
+            return null;
+        }
+        // a value as long as a sentence is not a value: the pill's compact rule
+        return value.length() > 12 ? null : value;
+    }
+
+    private static boolean contains(CharSequence text, String value) {
+        return text != null && text.toString().contains(value.trim());
+    }
+
+    private void drawHero(Canvas c, float x, float y, float a0, float dy0) {
+        float top = y + heroTop + dy0;
+        if (heroSize > 0) {
+            owner.drawLeading(c, item, x + pad, top + heroBlockH / 2.0f, heroSize, a0);
+        }
+        float left = x + heroTextX;
+        if (titleChrono) {
+            owner.titlePaint.setColor(Colors.withAlpha(Colors.WHITE, a0));
+            String text = fitted(22, owner.chronoText(item), owner.titlePaint, heroTextW);
+            owner.drawTime(c, timeKey(2, "#live1"), text, owner.titlePaint, left, top + heroTitleY - dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.titlePaint).ascent, item.chronoCountDown);
+        } else if (heroTitle != null) {
+            owner.titlePaint.setColor(Colors.withAlpha(Colors.WHITE, a0));
+            IslandView.drawLayout(c, heroTitle, left, top + heroTitleY);
+        }
+        if (heroValue != null) {
+            String value = item.trailing == IslandItem.Trailing.CHRONOMETER ? owner.chronoText(item) : heroValue;
+            owner.titlePaint.setColor(Colors.withAlpha(item.kind == IslandItem.Kind.CALL ? item.accent : Colors.WHITE, a0));
+            float base = top + heroTitleY - dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.titlePaint).ascent;
+            owner.drawTime(c, timeKey(0, "#lane"), value, owner.titlePaint,
+                    x + w - pad - IslandView.timeWidth(owner.titlePaint, value), base, item.chronoCountDown);
+        }
+        if (secIndent > 0.0f && item.secondaryIcon != null && description == null) {
+            float smallIcon = owner.dp(16.0f);
+            float lineH = subChrono ? lineHeight(owner.bodyPaint) : owner.bodyPaint.getTextSize() * 1.3f;
+            owner.drawDrawable(c, item.secondaryIcon, false, Colors.TEXT_BODY, left, top + heroSecondaryY + Math.max(0.0f, (lineH - smallIcon) / 2.0f), smallIcon, a0, 0.0f);
+        }
+        owner.bodyPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a0));
+        if (heroSecondary != null) {
+            IslandView.drawLayout(c, heroSecondary, left + (description == null ? secIndent : 0.0f), top + heroSecondaryY);
+        } else if (subChrono) {
+            String text = fitted(23, owner.chronoText(item), owner.bodyPaint, heroTextW - secIndent);
+            owner.drawTime(c, timeKey(3, "#live2"), text, owner.bodyPaint, left + secIndent, top + heroSecondaryY - dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.bodyPaint).ascent, item.chronoCountDown);
+        }
+        if (heroDetail != null) {
+            IslandView.drawLayout(c, heroDetail, left, top + heroDetailY);
+        }
+    }
+
     @Override
     public void draw(Canvas c, float x, float y, float alpha, long elapsed) {
         float a0 = alpha * rowAlpha(elapsed, 0);
         float dy0 = (1.0f - rowAlpha(elapsed, 0)) * owner.dp(ROW_SLIDE_DP);
+        float by = y; // the buttons were moved with the content already
+        if (holeRow) {
+            drawHero(c, x, y, a0, dy0);
+            if (heroProgressTop >= 0.0f) {
+                float progressAlpha = rowAlpha(elapsed, 1);
+                drawProgress(c, x, y + heroProgressTop + ((1.0f - progressAlpha) * owner.dp(ROW_SLIDE_DP)), alpha * progressAlpha);
+            }
+            if (actionsTop >= 0.0f) {
+                float buttonsAlpha = rowAlpha(elapsed, 2);
+                drawButtons(c, x, by + ((1.0f - buttonsAlpha) * owner.dp(ROW_SLIDE_DP)), alpha * buttonsAlpha);
+            }
+            return;
+        }
         float top = y + dy0;
         if (teams) {
             float ty = top + pad;
@@ -226,22 +365,22 @@ public final class LiveBody extends CardBody {
             if (score != null) {
                 owner.bigTimePaint.setColor(Colors.withAlpha(Colors.WHITE, a0));
                 float room = ((w - (pad * 2.0f)) - (logoSize * 2.0f)) - owner.dp(16.0f);
-                String text = TextUtils.ellipsize(score, owner.bigTimePaint, room, TextUtils.TruncateAt.END).toString();
-                Paint.FontMetrics fm = owner.bigTimePaint.getFontMetrics();
+                String text = fitted(20, score, owner.bigTimePaint, room);
+                Paint.FontMetrics fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.bigTimePaint);
                 float tw = IslandView.timeWidth(owner.bigTimePaint, text);
-                owner.drawTime(c, item.key + "#score", text, owner.bigTimePaint, ((w / 2.0f) + x) - (tw / 2.0f), midY - ((fm.ascent + fm.descent) / 2.0f), false);
+                owner.drawTime(c, timeKey(1, "#score"), text, owner.bigTimePaint, ((w / 2.0f) + x) - (tw / 2.0f), midY - ((fm.ascent + fm.descent) / 2.0f), false);
             }
         }
         float left = pad + x;
-        if (header != null) {
+        if (header != null && !holeRow) {
             owner.smallPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a0));
-            String text = TextUtils.ellipsize(header, owner.smallPaint, textW, TextUtils.TruncateAt.END).toString();
-            c.drawText(text, left, top + headerY - owner.smallPaint.getFontMetrics().ascent, owner.smallPaint);
+            String text = fitted(21, header, owner.smallPaint, textW);
+            c.drawText(text, left, top + headerY - dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.smallPaint).ascent, owner.smallPaint);
         }
         if (titleChrono) {
             owner.titlePaint.setColor(Colors.withAlpha(Colors.WHITE, a0));
-            String text = TextUtils.ellipsize(owner.chronoText(item), owner.titlePaint, textW, TextUtils.TruncateAt.END).toString();
-            owner.drawTime(c, item.key + "#live1", text, owner.titlePaint, left, top + titleY - owner.titlePaint.getFontMetrics().ascent, item.chronoCountDown);
+            String text = fitted(22, owner.chronoText(item), owner.titlePaint, textW);
+            owner.drawTime(c, timeKey(2, "#live1"), text, owner.titlePaint, left, top + titleY - dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.titlePaint).ascent, item.chronoCountDown);
         } else if (title != null) {
             owner.titlePaint.setColor(Colors.withAlpha(Colors.WHITE, a0));
             IslandView.drawLayout(c, title, left, top + titleY);
@@ -255,8 +394,8 @@ public final class LiveBody extends CardBody {
         if (description != null) {
             IslandView.drawLayout(c, description, left, top + subY);
         } else if (subChrono) {
-            String text = TextUtils.ellipsize(owner.chronoText(item), owner.bodyPaint, textW - secIndent, TextUtils.TruncateAt.END).toString();
-            owner.drawTime(c, item.key + "#live2", text, owner.bodyPaint, left + secIndent, top + subY - owner.bodyPaint.getFontMetrics().ascent, item.chronoCountDown);
+            String text = fitted(23, owner.chronoText(item), owner.bodyPaint, textW - secIndent);
+            owner.drawTime(c, timeKey(3, "#live2"), text, owner.bodyPaint, left + secIndent, top + subY - dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.bodyPaint).ascent, item.chronoCountDown);
         } else if (subtitle != null) {
             IslandView.drawLayout(c, subtitle, left + secIndent, top + subY);
         }
@@ -282,7 +421,7 @@ public final class LiveBody extends CardBody {
         }
         if (actionsTop >= 0.0f) {
             float buttonsAlpha = rowAlpha(elapsed, 2);
-            drawButtons(c, x, y + ((1.0f - buttonsAlpha) * owner.dp(ROW_SLIDE_DP)), alpha * buttonsAlpha);
+            drawButtons(c, x, by + ((1.0f - buttonsAlpha) * owner.dp(ROW_SLIDE_DP)), alpha * buttonsAlpha);
         }
     }
 
@@ -304,7 +443,8 @@ public final class LiveBody extends CardBody {
                 float segStart = item.progressSegmentStarts[i];
                 float segEnd = i + 1 < segments ? item.progressSegmentStarts[i + 1] : 1.0f;
                 owner.fillPaint.setColor(Colors.withAlpha(item.progressSegmentColors[i] | Colors.BLACK, alpha));
-                c.drawRect(left + (width * segStart) + (i == 0 ? 0.0f : gap / 2.0f), barTop, (left + (width * segEnd)) - (i + 1 == segments ? 0.0f : gap / 2.0f), barTop + barHeight, owner.fillPaint);
+                float l = left + (width * segStart) + (i == 0 ? 0.0f : gap / 2.0f);
+                owner.drawBarSpan(c, l, (left + (width * segEnd)) - (i + 1 == segments ? 0.0f : gap / 2.0f), l, barTop, barHeight, item.segmentDashed(i), owner.fillPaint);
             }
         } else {
             owner.fillPaint.setColor(Colors.withAlpha(Colors.TRACK, alpha));

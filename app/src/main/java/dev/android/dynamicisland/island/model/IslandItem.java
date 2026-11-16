@@ -63,6 +63,10 @@ public final class IslandItem {
     public CharSequence subtitle;
     /** Optional leading identity beside the compact icon; the trailing value keeps its own space. */
     public CharSequence compactLabel;
+    /** Short text drawn before the compact icon whatever the trailing shows (a bus line number); null = none. */
+    public CharSequence leadingBadge;
+    /** Tint of the leading symbol in place of the theme's (a bus line colour); 0 = default. */
+    public int leadingTint;
     /** Explicit module-owned presentation; third-party notification layouts keep DEFAULT. */
     public enum EventLayout { DEFAULT, BATTERY, DEVICE, STATUS, BUDS, QUICK_SHARE, NOW }
     /** Galaxy Buds product image in the earbuds' real colour, for {@link EventLayout#BUDS}; null otherwise. */
@@ -72,6 +76,11 @@ public final class IslandItem {
     public int budsLeft = -1, budsRight = -1, budsCase = -1;
     public CharSequence budsMode;
     public Drawable budsModeIcon;
+    /** {@link #trailingIcon} is drawn white whatever the theme accent, at this size over its slot (padded glyphs). */
+    public boolean trailingIconWhite;
+    public float trailingIconScale = 1f;
+    /** Tint of {@link #trailingIcon}. */
+    public int trailingTint() { return trailingIconWhite ? 0xFFFFFFFF : symbolTint(); }
     /**
      * Noise control of the expanded Buds card: the current mode (one of {@link #BUDS_MODES}), the glyph and name of
      * each mode in that order, and the call that switches mode; null setter = no controls.
@@ -113,6 +122,8 @@ public final class IslandItem {
     public boolean shareDone;
     public int batteryPercent = -1;
     public boolean batteryCharging;
+    /** Turn-by-turn route facts of a {@link Kind#NAVIGATION} item (distance, instruction, arrival), or null. */
+    public NavFacts nav;
     /** Third line of a card (ongoing-activity detail text). */
     public CharSequence detail;
     /** Accessibility/long description; replaces the secondary line when present (OngoingActivityData.mDescription). */
@@ -162,6 +173,10 @@ public final class IslandItem {
      * custom) when theming is on, white otherwise. App colours (a clock's orange, a buds app's blue) never reach them.
      */
     public int symbolTint() { return customAccent != 0 ? customAccent : 0xFFFFFFFF; }
+    /** Tint of the leading symbol: the app's own colour when it gave one, the theme's otherwise. */
+    public int leadingSymbolTint() { return leadingTint != 0 ? leadingTint : symbolTint(); }
+    /** Whether segment {@code i} of the bar is drawn dashed. */
+    public boolean segmentDashed(int i) { return progressSegmentDashed != null && i < progressSegmentDashed.length && progressSegmentDashed[i]; }
     /** Fill of a primary (non-semantic) button: the darkened theme accent when theming is on, neutral grey otherwise. */
     public int primaryButtonFill(float darken) {
         return customAccent != 0 ? dev.android.dynamicisland.island.graphics.Colors.blend(customAccent,
@@ -191,7 +206,6 @@ public final class IslandItem {
     public java.util.function.Consumer<Float> sliderChange;
     /** Texts that follow the slider while it is dragged (the value is the step the finger is on, 0..1); null = fixed texts. */
     public java.util.function.Function<Float, String> sliderTrailing;
-    public java.util.function.Function<Float, String> sliderSubtitle;
 
     /** What the compact pill shows at its trailing edge. */
     public Trailing trailing = Trailing.NONE;
@@ -242,6 +256,8 @@ public final class IslandItem {
     /** Segmented progress: segment i starts at progressSegmentStarts[i] (0..1) and is painted progressSegmentColors[i]. */
     public int[] progressSegmentColors;
     public float[] progressSegmentStarts;
+    /** Segments drawn dashed (walking legs of a trip), parallel to {@link #progressSegmentColors}; null = all solid. */
+    public boolean[] progressSegmentDashed;
     /** Marker drawn at the current position of a segmented bar (e.g. the car in navigation cards). */
     public Drawable progressThumb;
     /**
@@ -418,6 +434,16 @@ public final class IslandItem {
     public boolean hasSegments() {
         return progressSegmentColors != null && progressSegmentColors.length > 0
                 && progressSegmentStarts != null && progressSegmentStarts.length == progressSegmentColors.length;
+    }
+
+    /**
+     * Whether opening this item shows more than its pill. System events (charging, low battery, ringer and other
+     * status changes) without buttons, details or a slider would only repeat the pill: a tap just bounces them.
+     */
+    public boolean opensCard() {
+        boolean statusEvent = key != null && key.startsWith("event:")
+                && (eventLayout == EventLayout.BATTERY || eventLayout == EventLayout.STATUS);
+        return !statusEvent || !actions.isEmpty() || description != null || remoteView != null || sliderChange != null;
     }
 
     /** True when the compact pill would look the same for both items, so it need not animate a swap. */

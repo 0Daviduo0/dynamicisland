@@ -411,6 +411,10 @@ public final class SettingsActivity extends Activity {
                 selected -> prefs.edit().putBoolean(ModuleSettings.KEY_LEGACY_ANIMATION, selected == 1)
                         .putBoolean(ModuleSettings.KEY_I_MODE, selected == 2).apply());
         ui.note(page, getString(R.string.imode_desc));
+        radios(R.string.expand_position, R.string.desc_expand_position, new int[]{R.string.expand_below, R.string.expand_around},
+                new int[]{OneUi.TAG_DEFAULT, 0},
+                flag(ModuleSettings.KEY_EXPAND_AROUND_HOLE, false) ? 1 : 0, LivePreview.MUSIC,
+                selected -> prefs.edit().putBoolean(ModuleSettings.KEY_EXPAND_AROUND_HOLE, selected == 1).apply());
         radios(R.string.transition_blur, R.string.desc_transition_blur, new int[]{R.string.blur_mode_auto, R.string.blur_mode_always, R.string.blur_mode_off},
                 new int[]{OneUi.TAG_DEFAULT, 0, 0},
                 ModuleSettings.readTransitionBlurMode(prefs), LivePreview.RING,

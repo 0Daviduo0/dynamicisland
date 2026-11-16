@@ -143,7 +143,7 @@ final class RemoteCards {
                 if(c.iMode) scaleX=scaleY=Math.min(scaleX,scaleY);
                 float left = c.iMode ? slot.centerX()-body.w*scaleX/2+body.pad*scaleX
                         : naturalSize ? shapes.contentLeft(c) + body.pad : slot.left + body.pad * scaleX;
-                float top = c.iMode ? slot.centerY()-body.h*scaleY/2+body.pad*scaleY : slot.top + body.pad * scaleY;
+                float top = (c.iMode ? slot.centerY()-body.h*scaleY/2+body.pad*scaleY : slot.top + body.pad * scaleY) + body.topInset * scaleY;
                 body.view.setPivotX(0);
                 body.view.setPivotY(0);
                 body.view.setScaleX(scaleX);

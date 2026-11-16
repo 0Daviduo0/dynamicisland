@@ -85,18 +85,6 @@ public final class CastSource {
         return pkg != null && pkg.equals(state.pkg) ? state : null;
     }
 
-    /** Zero is unknown, not evidence of recording termination. */
-    public long recorderSession(String pkg) {
-        RecorderLifecycle state = lifecycle;
-        return pkg != null && pkg.equals(state.pkg) ? state.generation : 0L;
-    }
-
-    /** Changes only after an observed stop/start or a different recorder owner, not a read failure. */
-    public long recorderStart(String pkg) {
-        RecorderLifecycle state = lifecycle;
-        return pkg != null && pkg.equals(state.pkg) ? state.start : 0L;
-    }
-
     private static String ownerPackage(Object model) {
         Object value = Refl.get(model, "managingPackageName");
         return value instanceof String && !((String) value).isEmpty() ? (String) value : null;

@@ -37,6 +37,8 @@ public final class BudsBody extends SliderBody {
     private static final float GAUGE_DP = 54f;
     private static final float MODE_ICON_DP = 16f;
     private static final float MODE_BUTTON_DP = 50f;
+    /** Galaxy Wearable's mode icons carry their own padding: drawn larger so they fill the button like its own. */
+    private static final float MODE_ICON_SCALE = 1.5f;
     private static final float MODE_LABEL_GAP_DP = 6f;
     private static final float MODE_LABEL_DP = 16f;
     private static final float SLIDER_GAP_DP = 16f;
@@ -98,6 +100,48 @@ public final class BudsBody extends SliderBody {
         }
     }
 
+    /** The earbuds picture leaves 16dp above it, most of which the band around the camera hole can cover. */
+    @Override
+    protected float bandOverlap() {
+        return owner.dp(HEADER_PAD_DP - 6f);
+    }
+
+    /** How far the whole card moves down so the header text starts under the camera hole. */
+    private float rowShift;
+
+    @Override
+    protected void onClearHole() {
+        super.onClearHole();
+        rowShift = 0;
+    }
+
+    /**
+     * Earbuds picture left of the hole, battery ring right of it, the names just under it: no band repeating the
+     * compact earbuds row above the card.
+     */
+    @Override
+    protected float layoutBesideHole() {
+        Bitmap image = item.budsImage;
+        float iw = image == null ? 0 : imageH * image.getWidth() / (float) Math.max(1, image.getHeight());
+        if (side + iw + owner.dp(4) > holeLeft) return -1;
+        if (gaugeSize > 0 && w - side - gaugeSize - owner.dp(4) < holeRight) return -1;
+        float textTop = headerH / 2f - textBlockHeight() / 2f;
+        rowShift = Math.max(0, holeBottom + owner.dp(4) - textTop);
+        shiftButtons(rowShift);
+        trackTop += rowShift;
+        shadeFade = Math.max(owner.dp(16), headerH / 2f + rowShift - holeBottom);
+        return h + rowShift;
+    }
+
+    private float textBlockHeight() {
+        float gap = owner.dp(4);
+        float h1 = first == null ? 0 : budsLineHeight(owner.titlePaint);
+        float h2 = second == null ? 0 : budsLineHeight(owner.bodyPaint);
+        float h3 = batteries == null ? 0 : budsLineHeight(owner.smallPaint);
+        int lines = (first != null ? 1 : 0) + (second != null ? 1 : 0) + (batteries != null ? 1 : 0);
+        return h1 + h2 + h3 + gap * Math.max(0, lines - 1);
+    }
+
     public static boolean supports(IslandItem it) {
         return it.eventLayout == IslandItem.EventLayout.BUDS && it.budsImage != null;
     }
@@ -138,6 +182,7 @@ public final class BudsBody extends SliderBody {
             // while a mode loads it is a paler blue, and no other mode can be picked until the earbuds answer
             b.bg = selected ? (item.budsBusy ? Colors.withAlpha(SELECTED, 0.45f) : SELECTED) : Colors.TRACK;
             b.icon = item.budsModeIcons[i];
+            b.iconScale = MODE_ICON_SCALE;
             if (b.icon == null) b.label = String.valueOf(i);
             b.run = selected || item.budsBusy ? () -> { } : () -> item.budsSetNoise.accept(mode);
             buttons.add(b);
@@ -176,12 +221,12 @@ public final class BudsBody extends SliderBody {
 
     @Override
     public void draw(Canvas c, float x, float y, float alpha, long elapsed) {
-        drawHeader(c, x, y, alpha * rowAlpha(elapsed, 0));
+        drawHeader(c, x, y + rowShift, alpha * rowAlpha(elapsed, 0));
         if (!controls) return;
         float modes = alpha * rowAlpha(elapsed, 1);
-        drawButtons(c, x, y, modes);
+        drawButtons(c, x, y, modes); // rects and track already moved by layoutBesideHole
         if (item.budsBusy) drawLoading(c, x, y, modes);
-        drawModeLabels(c, x, y, modes);
+        drawModeLabels(c, x, y + rowShift, modes);
         if (hasSlider(item)) drawSlider(c, x, y, alpha * rowAlpha(elapsed, 2));
     }
 
@@ -200,7 +245,7 @@ public final class BudsBody extends SliderBody {
         float textRight = x + w - side - (gaugeSize > 0 ? gaugeSize + owner.dp(12) : 0);
         if (gaugeSize > 0) {
             int percent = item.batteryPercent;
-            int colour = percent <= 15 ? Colors.DESTRUCTIVE_RED : 0xFF3DB653;
+            int colour = percent <= 15 ? Colors.DESTRUCTIVE_RED : Colors.CALL_GREEN;
             gauge.draw(c, x + w - side - gaugeSize / 2f, midY, gaugeSize, percent, colour, a, true, false);
         }
         drawText(c, textLeft, Math.max(0, textRight - textLeft), midY, a);
@@ -247,35 +292,35 @@ public final class BudsBody extends SliderBody {
         float h2 = second == null ? 0 : budsLineHeight(owner.bodyPaint);
         float h3 = batteries == null ? 0 : budsLineHeight(owner.smallPaint);
         int lines = (first != null ? 1 : 0) + (second != null ? 1 : 0) + (batteries != null ? 1 : 0);
-        float top = midY - (h1 + h2 + h3 + gap * Math.max(0, lines - 1)) / 2f;
+        float top = midY - textBlockHeight() / 2f;
         if (first != null) {
             owner.titlePaint.setColor(Colors.withAlpha(Colors.WHITE, a));
-            top = line(c, first, owner.titlePaint, left, room, top) + gap;
+            top = line(c, 20, first, owner.titlePaint, left, room, top) + gap;
         }
         if (second != null) {
             float l = left;
             float r = room;
             if (secondIsMode && item.budsModeIcon != null) {
                 float icon = owner.dp(MODE_ICON_DP);
-                owner.drawDrawable(c, item.budsModeIcon, false, item.symbolTint(), l, top + (h2 - icon) / 2f, icon, a, 0f);
+                owner.drawDrawable(c, item.budsModeIcon, false, Colors.WHITE, l, top + (h2 - icon) / 2f, icon, a, 0f);
                 l += icon + owner.dp(6);
                 r -= icon + owner.dp(6);
             }
             owner.bodyPaint.setColor(Colors.withAlpha(Colors.TEXT_BODY, a));
-            top = line(c, second, owner.bodyPaint, l, r, top) + gap;
+            top = line(c, 21, second, owner.bodyPaint, l, r, top) + gap;
         }
         if (batteries != null) {
             owner.smallPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a));
             owner.smallPaint.getFontMetrics(fm);
-            owner.drawTime(c, item.key + "#buds", batteries, owner.smallPaint, left, top - fm.ascent, false);
+            owner.drawTime(c, timeKey(0, "#buds"), batteries, owner.smallPaint, left, top - fm.ascent, false);
         }
     }
 
     /** Draws one ellipsized line with its top at {@code top}; returns its bottom. */
-    private float line(Canvas c, String text, Paint paint, float left, float room, float top) {
+    private float line(Canvas c, int slot, String text, Paint paint, float left, float room, float top) {
         if (room <= 0) return top;
         paint.getFontMetrics(fm);
-        String shown = TextUtils.ellipsize(text, (TextPaint) paint, room, TextUtils.TruncateAt.END).toString();
+        String shown = fitted(slot, text, (TextPaint) paint, room);
         c.drawText(shown, left, top - fm.ascent, paint);
         return top + (fm.descent - fm.ascent);
     }

@@ -19,10 +19,16 @@ import java.util.WeakHashMap;
 public final class ShadeMaterialBackdrop {
     private static final Map<View,Shared> WINDOWS=new WeakHashMap<>();
     private ShadeMaterialBackdrop() { }
+    // Scratch for screenBounds/visible, called from the rows' onDraw: main thread only.
+    private static final Matrix MATRIX=new Matrix();
+    private static final float[] ORIGIN=new float[2];
+    private static final int[] LOCATION=new int[2];
+    private static final Rect VISIBLE=new Rect();
+
     public static void screenBounds(View host,RectF local,RectF out) {
-        Matrix matrix=new Matrix();host.transformMatrixToGlobal(matrix);
-        float[] origin={0,0};matrix.mapPoints(origin);
-        int[] location=new int[2];host.getLocationOnScreen(location);
+        Matrix matrix=MATRIX;matrix.reset();host.transformMatrixToGlobal(matrix);
+        float[] origin=ORIGIN;origin[0]=0;origin[1]=0;matrix.mapPoints(origin);
+        int[] location=LOCATION;host.getLocationOnScreen(location);
         matrix.postTranslate(location[0]-origin[0],location[1]-origin[1]);
         out.set(local);matrix.mapRect(out);
     }
@@ -48,7 +54,7 @@ public final class ShadeMaterialBackdrop {
             if(node.getAlpha()<=.01f)return false;
             ViewParent parent=node.getParent();node=parent instanceof View ? (View)parent : null;
         }
-        return view.getGlobalVisibleRect(new Rect());
+        return view.getGlobalVisibleRect(VISIBLE);
     }
     private static final class Shared {
         final View root;

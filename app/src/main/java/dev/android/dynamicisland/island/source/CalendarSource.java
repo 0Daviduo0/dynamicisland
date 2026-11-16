@@ -49,6 +49,8 @@ public final class CalendarSource {
     private Handler worker;
     private volatile IslandItem current;
     private final Runnable check = this::checkNow;
+    private ContentObserver observer;
+    private boolean observing;
 
     /** One event as read from the provider. */
     private static final class Event {
@@ -60,29 +62,36 @@ public final class CalendarSource {
         this.ctx = ctx;
         this.main = main;
         this.onChange = onChange;
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
     }
 
     public void start() {
         HandlerThread thread = new HandlerThread("island-calendar");
         thread.start();
         worker = new Handler(thread.getLooper());
-        try {
-            ctx.getContentResolver().registerContentObserver(CalendarContract.CONTENT_URI, true, new ContentObserver(worker) {
-                @Override
-                public void onChange(boolean selfChange) {
-                    reschedule(1000);
-                }
-            });
-        } catch (Throwable t) {
-            XLog.e("calendar observer not registered", t);
-        }
-        reschedule(0);
+        observer = new ContentObserver(worker) {
+            @Override
+            public void onChange(boolean selfChange) {
+                reschedule(1000);
+            }
+        };
+        syncSettings();
     }
 
-    /** Settings changed: read again now. */
+    /** Settings changed: watch and read the calendar only while its card is on. */
     public void syncSettings() {
-        if (worker != null) reschedule(0);
+        if (worker == null) return;
+        boolean wanted = ModuleSettings.calendarCard();
+        if (wanted != observing) {
+            try {
+                if (wanted) ctx.getContentResolver().registerContentObserver(CalendarContract.CONTENT_URI, true, observer);
+                else ctx.getContentResolver().unregisterContentObserver(observer);
+                observing = wanted;
+            } catch (Throwable t) {
+                XLog.e("calendar observer not (un)registered", t);
+            }
+        }
+        reschedule(0); // disabled: one last check clears the card and schedules nothing
     }
 
     private void reschedule(long delay) {
@@ -93,8 +102,9 @@ public final class CalendarSource {
     private void checkNow() {
         IslandItem fresh = null;
         long nextCheck = NEAR_POLL_MS;
+        boolean enabled = ModuleSettings.calendarCard();
         try {
-            if (ModuleSettings.calendarCard()) {
+            if (enabled) {
                 long now = System.currentTimeMillis();
                 Event near = first(now - AFTER_MS, now + LEAD_MS, now);
                 if (near != null) {
@@ -115,7 +125,7 @@ public final class CalendarSource {
         if (before != null && fresh != null && !changed) fresh = before;
         current = fresh;
         if (changed) main.post(onChange);
-        worker.postDelayed(check, Math.min(nextCheck, 30 * 60_000L));
+        if (enabled) worker.postDelayed(check, Math.min(nextCheck, 30 * 60_000L));
     }
 
     /** The earliest timed event (not all-day, not declined) that begins inside [from, to). */

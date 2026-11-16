@@ -29,6 +29,10 @@ public final class Colors {
     /** Marks a button without a fill (the glyph is drawn alone). */
     public static final int TRANSPARENT_MARK = 0x00FFFFFF;
     public static final int SEGMENT_UNREACHED = 0xFF9B9F9F;
+    /** Recording dot, waveform and send-progress red. */
+    public static final int RECORDING_RED = 0xFFFF5B62;
+    /** A timer that ran out, and the clock card's alert bar. */
+    public static final int TIMER_ENDED = 0xFFFC6C65;
 
     private static final int MAX_LIFT_PASSES = 12;
     private static final float MIN_LUMINANCE_ON_BLACK = 0.22f;
@@ -53,6 +57,11 @@ public final class Colors {
         return (float) Math.pow((c + 0.055f) / 1.055f, 2.4f);
     }
 
+    /** A light, nearly opaque fill (white or a pale accent): text on it should be black. */
+    public static boolean isLightFill(int color) {
+        return Color.alpha(color) > 200 && luminance(color) > 0.5f;
+    }
+
     /** Opaque version of {@code color}, lightened towards white until it is readable on a black island. */
     public static int readableOnBlack(int color) {
         int lifted = color | BLACK;
@@ -65,15 +74,11 @@ public final class Colors {
     /** Per-channel linear mix: {@code from} at t = 0, {@code to} at t = 1. */
     public static int blend(int from, int to, float t) {
         float keep = 1.0f - t;
-        return Color.argb(
-                mix(Color.alpha(from), Color.alpha(to), keep, t),
-                mix(Color.red(from), Color.red(to), keep, t),
-                mix(Color.green(from), Color.green(to), keep, t),
-                mix(Color.blue(from), Color.blue(to), keep, t));
-    }
-
-    private static int mix(int a, int b, float wa, float wb) {
-        return Math.round((a * wa) + (b * wb));
+        int a = Math.round((from >>> 24) * keep + (to >>> 24) * t);
+        int r = Math.round(((from >> 16) & 255) * keep + ((to >> 16) & 255) * t);
+        int g = Math.round(((from >> 8) & 255) * keep + ((to >> 8) & 255) * t);
+        int b = Math.round((from & 255) * keep + (to & 255) * t);
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     /** Scales the alpha channel of {@code color} by {@code alpha} (clamped to 0..1). */

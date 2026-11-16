@@ -65,6 +65,10 @@ final class BodyFactory {
         }
         // a message popup has its own card (avatar, text); the other live cards, ProgressStyle ones included, all share
         // the live card layout: app name and time on top, the icon at the right, the bar under the text
+        if (dev.android.dynamicisland.island.view.card.NavBody.supports(it)) {
+            // the route facts read better than the app's own expanded layout
+            return new dev.android.dynamicisland.island.view.card.NavBody(view, it, width);
+        }
         if (it.kind == IslandItem.Kind.PEEK && it.remoteView == null) {
             return new ProgressBody(view, it, width);
         }

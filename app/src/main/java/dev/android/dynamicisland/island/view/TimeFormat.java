@@ -1,13 +1,9 @@
 package dev.android.dynamicisland.island.view;
 
 import dev.android.dynamicisland.island.model.IslandItem;
-import java.util.regex.Pattern;
 
 /** Formats the clocks shown on the island ("3:07", "12:04:09", "01:30", hundredths for stopwatches). */
 public final class TimeFormat {
-    /** Texts that look like a clock; only those get the rolling-digit animation. */
-    static final Pattern CLOCK_TEXT = Pattern.compile("-?\\d{1,2}(:\\d{2}){1,2}(\\.\\d{2})?");
-
     private TimeFormat() {
     }
 
@@ -16,7 +12,17 @@ public final class TimeFormat {
         long now = item.chronoUsesElapsedRealtime ? android.os.SystemClock.elapsedRealtime() : System.currentTimeMillis();
         long base = item.chronoUsesElapsedRealtime ? item.chronoElapsedBase : item.chronoBase;
         long ms = item.chronoCountDown ? base - now : now - base;
-        return item.chronoMillis ? withHundredths(ms) : clock(Math.max(0L, ms));
+        if (item.chronoMillis) return withHundredths(ms);
+        // a Clock timer that ran out counts up again behind a minus sign, as the Clock app shows it
+        if (ms < 0 && item.chronoCountDown && item.clockKind == IslandItem.CLOCK_TIMER) return "-" + clock(-ms);
+        return clock(Math.max(0L, ms));
+    }
+
+    /** Whether {@code item} is a Clock timer that already ran out. */
+    public static boolean timerEnded(IslandItem item) {
+        if (item.clockKind != IslandItem.CLOCK_TIMER) return false;
+        long left = remainingMillis(item);
+        return left != Long.MIN_VALUE && left < 0;
     }
 
     /**
@@ -30,24 +36,51 @@ public final class TimeFormat {
             return (mono ? item.chronoElapsedBase : item.chronoBase) - now;
         }
         if (item.trailing == IslandItem.Trailing.TEXT && item.trailingText != null) {
-            return parseClock(item.trailingText.toString());
+            return parseClock(item.trailingText);
         }
         return Long.MIN_VALUE;
     }
 
-    /** "9:41" / "-0:12" / "1:02:03" to milliseconds; {@code Long.MIN_VALUE} for anything else. */
-    public static long parseClock(String text) {
-        String t = text.trim();
-        if (!CLOCK_TEXT.matcher(t).matches()) return Long.MIN_VALUE;
-        boolean negative = t.startsWith("-");
-        if (negative) t = t.substring(1);
-        int dot = t.indexOf('.');
-        long centis = dot < 0 ? 0 : Long.parseLong(t.substring(dot + 1));
-        if (dot >= 0) t = t.substring(0, dot);
+    /**
+     * "9:41" / "-0:12" / "1:02:03" / "1:05.37" to milliseconds; {@code Long.MIN_VALUE} for anything else.
+     * Grammar {@code -?\d{1,2}(:\d{2}){1,2}(\.\d{2})?} after trimming, parsed without allocating: it runs on every frame.
+     */
+    public static long parseClock(CharSequence text) {
+        int start = 0;
+        int end = text.length();
+        while (start < end && text.charAt(start) <= ' ') start++;
+        while (end > start && text.charAt(end - 1) <= ' ') end--;
+        int i = start;
+        boolean negative = i < end && text.charAt(i) == '-';
+        if (negative) i++;
+        int lead = 0;
         long seconds = 0;
-        for (String part : t.split(":")) seconds = seconds * 60 + Long.parseLong(part);
+        while (i < end && lead < 3 && isDigit(text.charAt(i))) {
+            seconds = seconds * 10 + (text.charAt(i++) - '0');
+            lead++;
+        }
+        if (lead < 1 || lead > 2) return Long.MIN_VALUE;
+        int groups = 0;
+        while (i < end && text.charAt(i) == ':') {
+            if (i + 2 >= end || !isDigit(text.charAt(i + 1)) || !isDigit(text.charAt(i + 2))) return Long.MIN_VALUE;
+            seconds = seconds * 60 + (text.charAt(i + 1) - '0') * 10 + (text.charAt(i + 2) - '0');
+            i += 3;
+            groups++;
+        }
+        if (groups < 1 || groups > 2) return Long.MIN_VALUE;
+        long centis = 0;
+        if (i < end && text.charAt(i) == '.') {
+            if (i + 2 >= end || !isDigit(text.charAt(i + 1)) || !isDigit(text.charAt(i + 2))) return Long.MIN_VALUE;
+            centis = (text.charAt(i + 1) - '0') * 10 + (text.charAt(i + 2) - '0');
+            i += 3;
+        }
+        if (i != end) return Long.MIN_VALUE;
         long ms = seconds * 1000 + centis * 10;
         return negative ? -ms : ms;
+    }
+
+    private static boolean isDigit(char c) {
+        return c >= '0' && c <= '9';
     }
 
     /** A tick this long after a boundary surely sees the clock moved on. */

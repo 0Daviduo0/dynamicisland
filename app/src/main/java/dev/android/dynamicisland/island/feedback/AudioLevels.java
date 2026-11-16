@@ -2,7 +2,6 @@ package dev.android.dynamicisland.island.feedback;
 
 import android.media.audiofx.Visualizer;
 import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.SystemClock;
 import dev.android.dynamicisland.settings.ModuleSettings;
 import dev.android.dynamicisland.xposed.XLog;
@@ -47,9 +46,7 @@ public final class AudioLevels {
     private Visualizer viz;
 
     public AudioLevels() {
-        HandlerThread thread = new HandlerThread("DynamicIslandAudio");
-        thread.start();
-        bg = new dev.android.dynamicisland.xposed.GuardedHandler(thread.getLooper());
+        bg = new dev.android.dynamicisland.xposed.GuardedHandler(AudioThread.looper());
         for (int i = 0; i < BANDS; i++) {
             bands[i] = new Band();
         }
@@ -197,20 +194,16 @@ public final class AudioLevels {
             floor += (db < floor ? 0.2f : 0.003f) * (db - floor);
             peak = Math.max(db, floor + ((peak - floor) * peakDecay));
             peak = Math.max(peak, floor + MIN_SPAN_DB);
-            float body = clamp01((db - floor) / (peak - floor));
+            float body = dev.android.dynamicisland.island.graphics.Easing.clamp01((db - floor) / (peak - floor));
 
             float flux = Math.max(0.0f, db - mean);
             mean += (db - mean) * meanAlpha;
             peakFlux = Math.max(flux, peakFlux * peakDecay);
             peakFlux = Math.max(peakFlux, MIN_FLUX_DB);
-            float beat = clamp01(flux / peakFlux);
+            float beat = dev.android.dynamicisland.island.graphics.Easing.clamp01(flux / peakFlux);
 
-            float mixed = clamp01((0.3f * body) + (0.8f * beat * ((0.6f * body) + 0.4f)));
+            float mixed = dev.android.dynamicisland.island.graphics.Easing.clamp01((0.3f * body) + (0.8f * beat * ((0.6f * body) + 0.4f)));
             return (float) Math.pow(mixed, 1.5d);
         }
-    }
-
-    private static float clamp01(float v) {
-        return Math.max(0.0f, Math.min(1.0f, v));
     }
 }

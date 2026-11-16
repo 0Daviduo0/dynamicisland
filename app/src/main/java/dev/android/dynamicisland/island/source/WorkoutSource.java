@@ -40,7 +40,7 @@ public final class WorkoutSource {
     public WorkoutSource(Context ctx, Handler main, Runnable onChange) {
         this.ctx = ctx;
         this.onChange = onChange;
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
     }
 
     /** True for the ongoing notification of a Samsung Health workout. */

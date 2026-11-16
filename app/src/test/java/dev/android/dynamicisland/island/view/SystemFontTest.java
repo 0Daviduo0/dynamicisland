@@ -42,7 +42,6 @@ public class SystemFontTest {
         assertEquals(Typeface.create(Typeface.SERIF,600,false),paints.trail.getTypeface());
         assertEquals(Typeface.create(Typeface.SERIF,600,false),paints.title.getTypeface());
         assertEquals(Typeface.create(Typeface.SERIF,600,false),paints.mediaTitle().getTypeface());
-        assertEquals(Typeface.create(Typeface.SERIF,400,false),paints.mediaArtist().getTypeface());
         Object key=Fonts.key();
         samsungFamily(Typeface.MONOSPACE);
         assertSame(systemDefault,Typeface.DEFAULT);assertNotEquals(key,Fonts.key());

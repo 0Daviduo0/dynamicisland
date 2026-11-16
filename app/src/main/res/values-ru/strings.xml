@@ -712,4 +712,10 @@
     <string name="island_charge_now">Сейчас: %1$s</string>
     <string name="island_charge_text_on">Экран вкл.: %1$s • %2$s</string>
     <string name="island_charge_text_off">Экран выкл.: %1$s • %2$s</string>
+    <string name="expand_position">Положение раскрытой карточки</string>
+    <string name="desc_expand_position">Где появляется открытая карточка.</string>
+    <string name="expand_below">Под камерой</string>
+    <string name="expand_around">Вокруг камеры</string>
+    <string name="card_roundness_concentric">Концентрические углы</string>
+    <string name="card_roundness_concentric_summary">Автоматически повторяют изгиб углов экрана, как в iOS.</string>
 </resources>

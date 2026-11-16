@@ -96,6 +96,11 @@ public final class QuickShareBody extends CardBody {
     }
 
     @Override
+    protected float bandOverlap() {
+        return pad - owner.dp(6);
+    }
+
+    @Override
     public boolean animating(long now) {
         return now - born < 900 || (bar && item.progress < 0f);
     }
@@ -170,7 +175,7 @@ public final class QuickShareBody extends CardBody {
         if (info != null) {
             owner.smallPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a));
             owner.smallPaint.getFontMetrics(fm);
-            owner.drawTime(c, item.key + "#qs", info, owner.smallPaint, left, top + hgt + owner.dp(6) - fm.ascent, false);
+            owner.drawTime(c, timeKey(0, "#qs"), info, owner.smallPaint, left, top + hgt + owner.dp(6) - fm.ascent, false);
         }
     }
 

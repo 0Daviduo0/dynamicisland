@@ -31,7 +31,7 @@ final class RecordingWaveform {
             float value = levels[index] * (1f - blend) + levels[Math.min(levels.length - 1, index + 1)] * blend;
             float h = baseline + (height - baseline) * (float) Math.pow(value, .8);
             float edge = Math.min(1f, Math.min(i + 1, bars - i) / 3f);
-            paint.setColor(dev.android.dynamicisland.island.graphics.Colors.withAlpha(0xFFFF5B62,
+            paint.setColor(dev.android.dynamicisland.island.graphics.Colors.withAlpha(dev.android.dynamicisland.island.graphics.Colors.RECORDING_RED,
                     alpha * (.45f + .55f * value) * (.55f + .45f * edge)));
             float x = left + step * (i + .5f) - barWidth / 2f;
             canvas.drawRoundRect(x, midY - h / 2f, x + barWidth, midY + h / 2f, barWidth / 2f, barWidth / 2f, paint);

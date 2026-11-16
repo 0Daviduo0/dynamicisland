@@ -172,10 +172,30 @@ public final class ForegroundApp {
     }
 
     // Optional framework details vary by OS/OEM. Do not turn absent members into Refl misses.
+    // Members are looked up once per class and name (absent ones too): task queries run on many refreshes.
+    private static final Object ABSENT = new Object();
+    private static final java.util.Map<String, Object> MEMBERS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static Object member(Class<?> type, String name, boolean method) {
+        String key = type.getName() + (method ? "#" : ".") + name;
+        Object known = MEMBERS.get(key);
+        if (known == null) {
+            try {
+                known = method ? type.getMethod(name) : type.getField(name);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+                known = ABSENT;
+            }
+            MEMBERS.put(key, known);
+        }
+        return known;
+    }
+
     private static Object field(Object target, String name) {
         if (target == null) return null;
+        Object f = member(target.getClass(), name, false);
+        if (f == ABSENT) return null;
         try {
-            return target.getClass().getField(name).get(target);
+            return ((java.lang.reflect.Field) f).get(target);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
         }
@@ -183,8 +203,10 @@ public final class ForegroundApp {
 
     private static Object call(Object target, String name) {
         if (target == null) return null;
+        Object m = member(target.getClass(), name, true);
+        if (m == ABSENT) return null;
         try {
-            return target.getClass().getMethod(name).invoke(target);
+            return ((java.lang.reflect.Method) m).invoke(target);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return null;
         }

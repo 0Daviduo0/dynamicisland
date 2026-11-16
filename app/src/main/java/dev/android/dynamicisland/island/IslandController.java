@@ -50,9 +50,9 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
         return filter;
     }
 
-    /** Never re-run a deferred refresh sooner than one frame. */
     /** Longest a ringing call keeps its card open (a call rarely rings longer). */
     private static final long RINGING_OPEN_MS = 60_000;
+    /** Never re-run a deferred refresh sooner than one frame. */
     private static final long MIN_DEFERRED_REFRESH_MS = 16L;
 
     private static IslandController instance;
@@ -74,6 +74,7 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
     private final ShadeWatch shadeWatch;
 
     private boolean refreshPosted;
+    private final Runnable deferredRefresh = this::requestRefresh;
     private final Runnable refreshRunnable = this::refreshNow;
     /** Key to "kind package" of the items of the last refresh, for the event log. */
     private Map<String, String> lastItems = new LinkedHashMap<>();
@@ -84,10 +85,11 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
             IslandView current = placementView();
             if (current != null) current.onRecordingAudioFrame();
         });
-        callAudio = new dev.android.dynamicisland.island.feedback.CallAudio(ctx, () -> main.post(() -> {
+        Runnable callAudioFrame = () -> {
             IslandView current = placementView();
             if (current != null) current.onCallAudioFrame();
-        }));
+        };
+        callAudio = new dev.android.dynamicisland.island.feedback.CallAudio(ctx, () -> main.post(callAudioFrame));
         sources = new IslandSources(ctx, classLoader, main, this::requestRefresh);
         haptics = new Haptics(ctx);
         placement = new IslandPlacement(ctx, main, classLoader, this, this, audio);
@@ -528,8 +530,23 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
 
     // ---- refresh -------------------------------------------------------------------------------
 
+    /** A pop-up taken over from its app (timer ended, earbuds to connect): open its card at once, or give it back. */
+    private void openAlert(IslandView view, List<IslandItem> shown, String key) {
+        for (IslandItem item : shown) {
+            if (!item.key.equals(key)) continue;
+            // already open (the app put its pop-up up again, e.g. smaller over another app): keep it hidden
+            if (view.isShowingCard(item) || (view.canPeek() && view.peek(item, dev.android.dynamicisland.island.source.AlertSource.OPEN_MS))) {
+                sources.alerts.opened(key);
+                return;
+            }
+            break;
+        }
+        sources.alerts.failed(key);
+    }
+
     /** Event log: which items appeared or went away since the last refresh (only changes, so it stays quiet). */
     private void logItemChanges(ItemLedger.Arrangement shape) {
+        if (sameItems(shape)) return; // refreshes run every second for clocks and players: no strings when nothing moved
         Map<String, String> now = new LinkedHashMap<>();
         for (IslandItem item : shape.shown) {
             now.put(item.key, item.kind + (item.packageName == null ? "" : " " + item.packageName));
@@ -548,6 +565,29 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
             }
         }
         lastItems = now;
+    }
+
+    /** Whether {@code shape} holds exactly the items {@link #lastItems} describes, checked without allocating. */
+    private boolean sameItems(ItemLedger.Arrangement shape) {
+        if (shape.shown.size() + shape.bubbled.size() != lastItems.size()) return false;
+        for (int i = 0; i < shape.shown.size(); i++) if (!logged(shape.shown.get(i), false)) return false;
+        for (int i = 0; i < shape.bubbled.size(); i++) if (!logged(shape.bubbled.get(i), true)) return false;
+        return true;
+    }
+
+    private boolean logged(IslandItem item, boolean minimized) {
+        String seen = lastItems.get(item.key);
+        if (seen == null) return false;
+        String kind = item.kind.toString();
+        String pkg = item.packageName;
+        int at = kind.length();
+        if (!seen.startsWith(kind)) return false;
+        if (minimized) {
+            if (!seen.startsWith(" minimized", at)) return false;
+            at += " minimized".length();
+        }
+        if (pkg == null) return seen.length() == at;
+        return seen.length() == at + 1 + pkg.length() && seen.charAt(at) == ' ' && seen.startsWith(pkg, at + 1);
     }
 
     /** Key of the ringing call whose card the island opened, until that call stops ringing. */
@@ -609,6 +649,8 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
                     }
                 }
             }
+            String alertOpen = sources.alerts.takePendingOpen();
+            if (alertOpen != null) openAlert(view, shape.shown, alertOpen);
             IslandItem nextCard = autoOpenCards.next(shape.shown, ModuleSettings.autoOpenCards(), now);
             if (nextCard != null && !view.isExpanded() && view.canPeek() && view.peek(nextCard, ModuleSettings.autoOpenMs())) autoOpenCards.opened(nextCard);
             logItemChanges(shape);
@@ -618,7 +660,8 @@ public final class IslandController implements IslandHost, IslandWindow.Listener
                 view.absorb();
             }
             if (shape.nextDeferredAt != Long.MAX_VALUE) {
-                main.postDelayed(this::requestRefresh, Math.max(MIN_DEFERRED_REFRESH_MS, shape.nextDeferredAt - now));
+                main.removeCallbacks(deferredRefresh); // one pending deferral, not one per refresh during the fly-in
+                main.postDelayed(deferredRefresh, Math.max(MIN_DEFERRED_REFRESH_MS, shape.nextDeferredAt - now));
             }
             placement.updateExitPackages(gathered.packages);
             onIslandFrame();

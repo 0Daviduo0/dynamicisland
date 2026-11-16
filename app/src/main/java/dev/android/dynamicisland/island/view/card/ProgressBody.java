@@ -35,6 +35,8 @@ public final class ProgressBody extends CardBody {
     final float barBoxH;
     final StaticLayout subtitle;
     final StaticLayout title;
+    /** How far everything moves down so the text starts under the camera hole. */
+    private float rowShift;
 
     public ProgressBody(IslandView owner, IslandItem item, float w) {
         super(owner, item, w);
@@ -53,6 +55,26 @@ public final class ProgressBody extends CardBody {
         h = pad + (item.actions.isEmpty() ? contentBottom : actionsTop + layoutTextButtons(actionsTop, pad));
     }
 
+    @Override
+    protected float bandOverlap() {
+        return pad - owner.dp(4.0f);
+    }
+
+    @Override
+    protected void onClearHole() {
+        rowShift = 0.0f;
+    }
+
+    /** Icon left of the hole, text and bar just below it: no band repeating the compact ring above. */
+    @Override
+    protected float layoutBesideHole() {
+        if (pad + image + owner.dp(4.0f) > holeLeft) return -1.0f;
+        rowShift = Math.max(0.0f, holeBottom + owner.dp(4.0f) - pad);
+        shiftButtons(rowShift);
+        shadeFade = Math.max(owner.dp(16.0f), pad + rowShift - holeBottom + owner.dp(8.0f));
+        return h + rowShift;
+    }
+
     private void drawSegmentedBar(Canvas c, float left, float right, float top, float alpha) {
         owner.drawSegmentedBarOn(c, item, left, right, top, barBoxH, alpha);
     }
@@ -60,6 +82,8 @@ public final class ProgressBody extends CardBody {
     @Override
     public void draw(Canvas c, float x, float y, float alpha, long elapsed) {
         float a = alpha * rowAlpha(elapsed, 0);
+        float buttonsY = y;
+        y += rowShift;
         Drawable icon = item.cardImage != null ? item.cardImage : item.icon;
         if (icon != null) {
             owner.drawDrawable(c, icon, true, 0, x + pad, y + pad, image, a, item.cardImageRound ? image / 2.0f : image * 0.25f);
@@ -89,7 +113,7 @@ public final class ProgressBody extends CardBody {
             }
         }
         if (!item.actions.isEmpty()) {
-            drawButtons(c, x, y, a);
+            drawButtons(c, x, buttonsY, a); // rects already moved by shiftButtons
         }
     }
 

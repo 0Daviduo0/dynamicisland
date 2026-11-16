@@ -75,7 +75,6 @@ public final class MediaFx {
     final ToneSet setTo;
     /** Separate from the scalar accent/ToneSet: secondary artwork colours only affect the waveform. */
     private final WaveformPaletteTransition waveformPalette = new WaveformPaletteTransition();
-    private final WaveformGradient waveformGradient = new WaveformGradient();
     /** Drift speed easing between paused and playing. */
     final Tween speed;
 
@@ -223,15 +222,6 @@ public final class MediaFx {
         return waveformPalette.colorAt(position, ModuleSettings.stillMusicEffects() ? now + IslandView.FX_COLOR_MS : now);
     }
 
-    /**
-     * Borrowed per-item paint, valid until the next call; draw immediately and do not mutate it.
-     * Its normalized shader spans the complete waveform bounds. Never touches the shared Paints.fill.
-     */
-    public Paint waveformPaint(float left, float width, float alpha, long now) {
-        return waveformGradient.paint(waveformColorAt(0.0f, now), waveformColorAt(0.5f, now),
-                waveformColorAt(1.0f, now), left, width, alpha);
-    }
-
     /** Whether something is still easing, so the view must keep redrawing. */
     public boolean animating(long now) {
         if (ModuleSettings.stillMusicEffects()) return false;
@@ -293,6 +283,12 @@ public final class MediaFx {
      * player's dark scrim on top, so white text and controls stay readable on any cover.
      */
     public void drawBackdrop(Canvas c, float x, float y, float w, float h, float alpha, long now) {
+        drawBackdrop(c, x, y, w, h, alpha, now, 0.0f);
+    }
+
+    /** As above, with the cover moved {@code shiftDown} px lower inside the crop (as far as the crop allows). */
+    public void drawBackdrop(Canvas c, float x, float y, float w, float h, float alpha, long now, float shiftDown) {
+        coverShift = shiftDown;
         float t = backPrev == null ? 1.0f : IslandView.clamp01((now - backStart) / BACKDROP_FADE_MS);
         if (t >= 1.0f) backPrev = null;
         if (backPrev != null) drawCover(c, backPrev, x, y, w, h, alpha);
@@ -318,6 +314,9 @@ public final class MediaFx {
         c.restoreToCount(save);
     }
 
+    /** Set by {@link #drawBackdrop}: how far the cover is moved down inside its crop, px. */
+    private float coverShift;
+
     private void drawCover(Canvas c, Bitmap art, float x, float y, float w, float h, float alpha) {
         if (art == null || art.isRecycled() || alpha <= 0.002f) return;
         if (art.getConfig() == Bitmap.Config.HARDWARE && !c.isHardwareAccelerated()) {
@@ -332,7 +331,7 @@ public final class MediaFx {
         float bw = art.getWidth(), bh = art.getHeight();
         float scale = Math.max(w / bw, h / bh);
         float sw = w / scale, sh = h / scale;
-        float sx = (bw - sw) / 2.0f, sy = (bh - sh) / 2.0f;
+        float sx = (bw - sw) / 2.0f, sy = Math.max(0.0f, ((bh - sh) / 2.0f) - (coverShift / scale));
         backSrc.set(Math.round(sx), Math.round(sy), Math.round(sx + sw), Math.round(sy + sh));
         backDst.set(x, y, x + w, y + h);
         backPaint.setAlpha(Math.round(255 * alpha));

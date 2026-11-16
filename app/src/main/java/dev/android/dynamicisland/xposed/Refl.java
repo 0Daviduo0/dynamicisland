@@ -264,7 +264,6 @@ public final class Refl {
 
     // ---- hooks ---------------------------------------------------------------------------------
 
-    /** Hooks every non-abstract method of that name declared by {@code cls}; returns how many. */
     /** Optional compatibility hooks: visit each declaration once, without reporting every absent name as a failure. */
     public static int hookAllHierarchy(ClassLoader cl, String className, String name, XC_MethodHook hook) {
         Class<?> cls = hasClass(className, cl) ? findClass(className, cl) : null;
@@ -291,6 +290,7 @@ public final class Refl {
         return count;
     }
 
+    /** Hooks every non-abstract method of that name declared by {@code cls}; returns how many. */
     public static int hookAll(Class<?> cls, String name, XC_MethodHook hook) {
         if (cls == null) {
             return 0;

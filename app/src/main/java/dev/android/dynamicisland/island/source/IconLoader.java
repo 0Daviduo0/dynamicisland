@@ -33,6 +33,8 @@ final class IconLoader {
     private final Context ctx;
     private final LruCache<String, Drawable.ConstantState> resourceIcons = new LruCache<>(CACHE_SIZE);
     private final Set<String> failedResources = new HashSet<>();
+    /** Launcher icons: ongoing cards are rebuilt on every System UI update, the package manager is asked once. */
+    private final LruCache<String, Drawable.ConstantState> appIcons = new LruCache<>(CACHE_SIZE);
     private final Map<String, String> packageByLabel = new HashMap<>();
     private long labelsScannedAt = -1;
 
@@ -105,8 +107,14 @@ final class IconLoader {
         if (pkg == null) {
             return null;
         }
+        Drawable.ConstantState known = appIcons.get(pkg);
+        if (known != null) {
+            return known.newDrawable().mutate();
+        }
         try {
-            return ctx.getPackageManager().getApplicationIcon(pkg);
+            Drawable d = ctx.getPackageManager().getApplicationIcon(pkg);
+            if (d.getConstantState() != null) appIcons.put(pkg, d.getConstantState());
+            return d;
         } catch (Throwable t) {
             return null;
         }

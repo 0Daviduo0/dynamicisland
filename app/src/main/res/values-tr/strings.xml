@@ -685,4 +685,10 @@
     <string name="perf_covered">Yukarıdaki düşük performans modu bunların hepsini zaten uyguluyor.</string>
     <string name="perf_glow_link">Parıltıyı kapatın veya daha zayıf ve sakin yapın</string>
     <string name="perf_material_link">Buzlu cam yerine klasik malzeme çok daha hafif çizilir</string>
+    <string name="expand_position">Açılan kartın konumu</string>
+    <string name="desc_expand_position">Açılan kartın görüneceği yer.</string>
+    <string name="expand_below">Kameranın altında</string>
+    <string name="expand_around">Kameranın çevresinde</string>
+    <string name="card_roundness_concentric">Eş merkezli köşeler</string>
+    <string name="card_roundness_concentric_summary">iOS gibi ekran köşelerinin eğrisini otomatik izler.</string>
 </resources>

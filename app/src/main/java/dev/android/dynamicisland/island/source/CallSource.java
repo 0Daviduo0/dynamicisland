@@ -2,7 +2,6 @@ package dev.android.dynamicisland.island.source;
 
 import android.app.Notification;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
@@ -27,7 +26,7 @@ import java.util.Map;
  * "in call" notification. They get the same call card (caller, running time, end button).
  */
 public final class CallSource {
-    private static final int CALL_GREEN = 0xFF3DB653;
+    private static final int CALL_GREEN = dev.android.dynamicisland.island.graphics.Colors.CALL_GREEN;
 
     private final Context ctx;
     private final Handler main;
@@ -36,8 +35,6 @@ public final class CallSource {
     private final Map<String, IslandItem> items = new LinkedHashMap<>();
     private final Map<String, Long> starts = new HashMap<>();
     // a VoIP app may update its notification every second: icons, labels and avatars are worked out once
-    private final Map<String, String> labels = new HashMap<>();
-    private final Map<String, Drawable.ConstantState> appIcons = new HashMap<>();
     private final Map<String, Object[]> avatars = new HashMap<>(); // key -> {large Icon, readable Drawable, Boolean personal}
 
     public CallSource(Context ctx, Handler main, Runnable onChange) {
@@ -255,35 +252,11 @@ public final class CallSource {
     }
 
     private Drawable appIcon(String pkg) {
-        try {
-            Drawable.ConstantState cs = appIcons.get(pkg);
-            if (cs != null) {
-                return cs.newDrawable().mutate();
-            }
-            Drawable d = ctx.getPackageManager().getApplicationIcon(pkg);
-            if (d.getConstantState() != null) {
-                appIcons.put(pkg, d.getConstantState());
-            }
-            return d;
-        } catch (Throwable t) {
-            return null;
-        }
+        return AppLook.shared(ctx).icon(pkg);
     }
 
     private String label(String pkg) {
-        String cached = labels.get(pkg);
-        if (cached != null) {
-            return cached;
-        }
-        String label = pkg;
-        try {
-            PackageManager pm = ctx.getPackageManager();
-            label = String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)));
-        } catch (Throwable t) {
-            // unknown package: its name is the best we have
-        }
-        labels.put(pkg, label);
-        return label;
+        return AppLook.shared(ctx).label(pkg);
     }
 
     /** For tests. */

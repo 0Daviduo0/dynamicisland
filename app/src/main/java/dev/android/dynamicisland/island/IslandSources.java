@@ -69,6 +69,7 @@ final class IslandSources {
     final CallSource calls;
     final PeekSource peeks;
     final dev.android.dynamicisland.island.source.QuickShareSource quickShare;
+    final dev.android.dynamicisland.island.source.AlertSource alerts;
     final dev.android.dynamicisland.island.source.AlarmSource alarm;
     final dev.android.dynamicisland.island.source.CalendarSource calendar;
     final dev.android.dynamicisland.island.source.WatchSource watch;
@@ -100,16 +101,17 @@ final class IslandSources {
         promoted = new PromotedSource(ctx, main, onChange);
         recorder = new RecorderNotificationSource(ctx, onChange);
         recorder.setLifecycleSession(cast::recorderLifecycle);
-        recorder.setOnShownChanged(() -> main.post(HideDuplicated::rebuild));
-        promoted.setOnShownChanged(() -> main.post(HideDuplicated::rebuild));
+        recorder.setOnShownChanged(this::rebuildShadeSoon);
+        promoted.setOnShownChanged(this::rebuildShadeSoon);
         rules = new RuleSource(ctx, main, onChange);
-        progress.setOnShownChanged(() -> main.post(HideDuplicated::rebuild));
-        rules.setOnShownChanged(() -> main.post(HideDuplicated::rebuild));
-        cast.onRecordersChanged = () -> main.post(HideDuplicated::rebuild);
-        torch.onShownChanged = () -> main.post(HideDuplicated::rebuild);
+        progress.setOnShownChanged(this::rebuildShadeSoon);
+        rules.setOnShownChanged(this::rebuildShadeSoon);
+        cast.onRecordersChanged = this::rebuildShadeSoon;
+        torch.onShownChanged = this::rebuildShadeSoon;
         calls = new CallSource(ctx, main, onChange, callClock);
         peeks = new PeekSource(ctx, main, onChange);
         quickShare = new dev.android.dynamicisland.island.source.QuickShareSource(ctx, main, onChange);
+        alerts = new dev.android.dynamicisland.island.source.AlertSource(ctx, main, onChange);
         alarm = new dev.android.dynamicisland.island.source.AlarmSource(ctx, main, onChange);
         calendar = new dev.android.dynamicisland.island.source.CalendarSource(ctx, main, onChange);
         watch = new dev.android.dynamicisland.island.source.WatchSource(ctx, main, onChange);
@@ -130,6 +132,7 @@ final class IslandSources {
         } catch (Throwable t) {
             XLog.e("event islands failed to start", t);
         }
+        guarded("alerts start", alerts::start);
         guarded("watch start", watch::start);
         guarded("car start", car::start);
         guarded("calendar start", calendar::start);
@@ -196,6 +199,7 @@ final class IslandSources {
         guarded("rules", () -> rules.collect(items, foreground));
         guarded("calls", () -> calls.collect(items, foreground));
         guarded("quick share", () -> quickShare.collect(items));
+        guarded("alerts", () -> alerts.collect(items));
         guarded("alarm", () -> {
             alarm.collect(items);
         });
@@ -246,5 +250,21 @@ final class IslandSources {
         } catch (Throwable t) {
             XLog.once("collect " + source, t);
         }
+    }
+
+    private boolean shadeRebuildPosted;
+    private final Runnable shadeRebuild = () -> {
+        shadeRebuildPosted = false;
+        HideDuplicated.rebuild();
+    };
+
+    /**
+     * Asks System UI to filter the shade again, once per main-loop turn: several sources often change in the same
+     * snapshot, and each rebuild re-runs the whole notification pipeline.
+     */
+    void rebuildShadeSoon() {
+        if (shadeRebuildPosted) return;
+        shadeRebuildPosted = true;
+        main.post(shadeRebuild);
     }
 }

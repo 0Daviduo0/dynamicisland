@@ -43,7 +43,7 @@ public final class PromotedSource {
     private Runnable onShownChanged = () -> { };
 
     public PromotedSource(Context ctx, Handler main, Runnable onChange) {
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
         this.onChange = onChange;
     }
 
@@ -187,6 +187,10 @@ public final class PromotedSource {
             it.trailingText = critical;
         } else if (it.progress >= 0.0f) {
             it.trailing = IslandItem.Trailing.PROGRESS_RING;
+        }
+        if (Notification.CATEGORY_NAVIGATION.equals(n.category)) {
+            it.kind = IslandItem.Kind.NAVIGATION;
+            OaCardBuilder.bindNavigation(it, extras, null);
         }
         if (n.actions != null) {
             for (Notification.Action a : n.actions) {

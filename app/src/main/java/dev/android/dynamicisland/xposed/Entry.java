@@ -15,6 +15,8 @@ public final class Entry implements IXposedHookLoadPackage {
     private static boolean easySetupInstalled;
     private static boolean quickShareInstalled;
     private static boolean launcherInstalled;
+    private static boolean briefPopupInstalled;
+    private static boolean clockInstalled, mcfdsInstalled, voiceInstalled;
 
     /** Path of the apk this code was loaded from (tells an old install from the new one), or "?". */
     private static String moduleApk() {
@@ -64,6 +66,56 @@ public final class Entry implements IXposedHookLoadPackage {
                     EasySetupHooks.install(lpparam.classLoader);
                 } catch (Throwable t) {
                     XLog.e("easysetup hooks failed", t);
+                }
+            }
+            return;
+        }
+        if (dev.android.dynamicisland.xposed.hooks.ClockAlertHooks.PACKAGE.equals(lpparam.packageName)) {
+            // opt-in: only reached when the user adds Clock to the LSPosed scope
+            if (!clockInstalled && lpparam.packageName.equals(lpparam.processName)) {
+                clockInstalled = true;
+                try {
+                    dev.android.dynamicisland.xposed.hooks.ClockAlertHooks.install(lpparam.classLoader);
+                } catch (Throwable t) {
+                    XLog.e("clock hooks failed", t);
+                }
+            }
+            return;
+        }
+        if (dev.android.dynamicisland.xposed.hooks.VoiceRecorderHooks.PACKAGE.equals(lpparam.packageName)) {
+            // opt-in: Voice Recorder's input level for the island's waveform
+            if (!voiceInstalled && lpparam.packageName.equals(lpparam.processName)) {
+                voiceInstalled = true;
+                try {
+                    dev.android.dynamicisland.xposed.hooks.VoiceRecorderHooks.install();
+                } catch (Throwable t) {
+                    XLog.e("voice recorder hooks failed", t);
+                }
+            }
+            return;
+        }
+        if (dev.android.dynamicisland.xposed.hooks.ClockAlertHooks.MCFDS_PACKAGE.equals(lpparam.packageName)) {
+            // opt-in: Auto Switch's earbuds pop-ups, only when MCFDs is in the LSPosed scope
+            if (!mcfdsInstalled && lpparam.packageName.equals(lpparam.processName)) {
+                mcfdsInstalled = true;
+                try {
+                    dev.android.dynamicisland.xposed.hooks.ClockAlertHooks.install(
+                            dev.android.dynamicisland.island.source.AlertBridge.SOURCE_AUTOSWITCH);
+                } catch (Throwable t) {
+                    XLog.e("mcfds hooks failed", t);
+                }
+            }
+            return;
+        }
+        if (SYSTEM_UI.equals(lpparam.packageName) && dev.android.dynamicisland.xposed.hooks.BriefPopupHole.PROCESS.equals(lpparam.processName)) {
+            // the brief notification pop-up lives in its own System UI process; no crash guard here, it
+            // shares its state file with the main process (every hook body is contained by SafeHook)
+            if (!briefPopupInstalled) {
+                briefPopupInstalled = true;
+                try {
+                    dev.android.dynamicisland.xposed.hooks.BriefPopupHole.install(lpparam.classLoader);
+                } catch (Throwable t) {
+                    XLog.e("brief popup hooks failed", t);
                 }
             }
             return;

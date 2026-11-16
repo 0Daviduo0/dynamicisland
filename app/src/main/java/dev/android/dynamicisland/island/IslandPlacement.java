@@ -11,6 +11,7 @@ import dev.android.dynamicisland.island.view.IslandHost;
 import dev.android.dynamicisland.island.view.IslandView;
 import dev.android.dynamicisland.island.window.ExitAnimationBridge;
 import dev.android.dynamicisland.island.window.IslandWindow;
+import dev.android.dynamicisland.island.window.PrivacyDotHider;
 import dev.android.dynamicisland.island.window.StatusBarIconFader;
 import dev.android.dynamicisland.settings.ModuleSettings;
 import dev.android.dynamicisland.xposed.Diagnostics;
@@ -38,9 +39,9 @@ final class IslandPlacement {
     private static final float CUTOUT_CENTER_TOLERANCE_DP = 10.0f;
     /** The visible part of the camera hole as a fraction of its bounding box. */
     private static final float CUTOUT_VISIBLE_RATIO = 0.78f;
-    /** Screens at least this wide (dp, short side) are treated as tablets. */
     /** How far in from the edge the island sits for the left and right positions, as a fraction of the screen width. */
     private static final float PILL_SIDE_FRACTION = 0.25f;
+    /** Screens at least this wide (dp, short side) are treated as tablets. */
     private static final float TABLET_MIN_WIDTH_DP = 600.0f;
     /** Phones in landscape (wider than this aspect ratio) hide the island. */
     private static final float LANDSCAPE_ASPECT = 1.2f;
@@ -97,6 +98,7 @@ final class IslandPlacement {
 
     private final Runnable revealTimer = this::onRevealDelayElapsed;
     private final View.OnLayoutChangeListener statusBarLayoutListener;
+    private final Runnable geometryUpdate = this::updateGeometry;
 
     IslandPlacement(Context ctx, Handler main, ClassLoader classLoader, IslandHost host,
             IslandWindow.Listener windowListener, AudioLevels audio) {
@@ -105,7 +107,11 @@ final class IslandPlacement {
         this.host = host;
         this.windowListener = windowListener;
         this.audio = audio;
-        statusBarLayoutListener = (v, l, t, r, b, ol, ot, or, ob) -> main.post(this::updateGeometry);
+        // one pending geometry update per burst of status bar layouts (its contents can move inside fixed bounds)
+        statusBarLayoutListener = (v, l, t, r, b, ol, ot, or, ob) -> {
+            main.removeCallbacks(geometryUpdate);
+            main.post(geometryUpdate);
+        };
         density = ctx.getResources().getDisplayMetrics().density;
         exit = new ExitAnimationBridge(classLoader);
         fader = new StatusBarIconFader(density);
@@ -196,7 +202,6 @@ final class IslandPlacement {
 
     // ---- system state --------------------------------------------------------------------------
 
-    /** @param state SystemUI StatusBarState: 0 shade, 1 keyguard, 2 locked shade */
     /** Told when the keyguard goes away (set by the controller; used for the unlock notice). */
     private Runnable onUnlocked;
 
@@ -204,6 +209,7 @@ final class IslandPlacement {
         onUnlocked = listener;
     }
 
+    /** @param state SystemUI StatusBarState: 0 shade, 1 keyguard, 2 locked shade */
     void setBarState(int state) {
         if (barState == state) {
             return;
@@ -511,7 +517,11 @@ final class IslandPlacement {
         window.setShown(true);
         if (!view.shadePulled()) {
             view.getCoverageBounds(scratch);
+            fader.setHideBattery(view.showsBattery());
             fader.update(scratch, !hidden && view.visibleAlpha() > 0.3f);
+            PrivacyDotHider.update(scratch, !hidden && view.visibleAlpha() > 0.3f, density);
+        } else {
+            PrivacyDotHider.update(scratch, false, density);
         }
         audio.setActive(view.needsAudio());
     }

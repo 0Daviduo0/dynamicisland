@@ -37,6 +37,7 @@ public final class PeekSource {
     private static final int MAX_ACTIONS = 2;
 
     private final Context ctx;
+    private final AppLook apps;
     private final Handler main;
     private final Runnable onChange;
     /** This source's own delayed refresh: sharing {@code onChange} would let another source cancel it. */
@@ -50,6 +51,7 @@ public final class PeekSource {
 
     public PeekSource(Context ctx, Handler main, Runnable onChange) {
         this.ctx = ctx;
+        this.apps = AppLook.shared(ctx);
         this.main = main;
         this.onChange = onChange;
     }
@@ -396,20 +398,11 @@ public final class PeekSource {
     }
 
     private Drawable appIcon(String pkg) {
-        try {
-            return ctx.getPackageManager().getApplicationIcon(pkg);
-        } catch (Throwable t) {
-            return null;
-        }
+        return apps.icon(pkg);
     }
 
     private String label(String pkg) {
-        try {
-            PackageManager pm = ctx.getPackageManager();
-            return String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)));
-        } catch (Throwable t) {
-            return pkg;
-        }
+        return apps.label(pkg);
     }
 
     /** The module has no string resources inside System UI, so pick the language here. */

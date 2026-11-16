@@ -21,7 +21,7 @@ import java.util.List;
  */
 public final class QuickShareSource {
     private static final int ACCENT = 0xFF3E91FF;
-    private static final int DONE_GREEN = 0xFF3DB653;
+    private static final int DONE_GREEN = dev.android.dynamicisland.island.graphics.Colors.CALL_GREEN;
     private static final long DONE_SHOWN_MS = 5000;
     /** How long the request card stays open by itself. */
     public static final long REQUEST_OPEN_MS = 30000;
@@ -56,7 +56,7 @@ public final class QuickShareSource {
         this.ctx = ctx;
         this.main = main;
         this.onChange = onChange;
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
         this.sends = new QuickShareSends(ctx, main, onChange, apps);
     }
 
@@ -241,7 +241,7 @@ public final class QuickShareSource {
             default:
                 it.subtitle = IslandText.get(ctx, s.phase() == QuickShareState.Phase.DECLINED ? "island_qs_declined" : "island_qs_receive_failed");
                 it.detail = what;
-                it.accent = 0xFFFF5B62;
+                it.accent = dev.android.dynamicisland.island.graphics.Colors.RECORDING_RED;
                 if (s.phase() == QuickShareState.Phase.FAILED) {
                     it.trailing = IslandItem.Trailing.ICON;
                     it.trailingIcon = new dev.android.dynamicisland.island.graphics.ErrorDrawable();

@@ -145,4 +145,10 @@
     <string name="island_workout_speed">Velocità</string>
     <string name="island_workout_steps">Passi</string>
     <string name="island_workout_paused">In pausa</string>
+    <string name="expand_position">Posizione della card espansa</string>
+    <string name="desc_expand_position">Dove compare una card aperta.</string>
+    <string name="expand_below">Sotto la fotocamera</string>
+    <string name="expand_around">Intorno alla fotocamera</string>
+    <string name="card_roundness_concentric">Angoli concentrici</string>
+    <string name="card_roundness_concentric_summary">Seguono da soli la curva degli angoli dello schermo, come su iOS.</string>
 </resources>

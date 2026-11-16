@@ -18,10 +18,9 @@ public final class Glyphs {
     public static final int PAUSE = 2;
     public static final int PREV = 3;
     public static final int NEXT = 4;
-    static final int BOLT = 5;
+    public static final int BOLT = 5;
     public static final int STOP = 6;
     public static final int MIC = 7;
-    static final int MIC_OFF = 8;
     public static final int HANGUP = 9;
     public static final int SPEAKER = 10;
     public static final int COPY = 11;
@@ -29,6 +28,7 @@ public final class Glyphs {
     public static final int POWER = 13;
     public static final int ANSWER = 14;
     public static final int CLOSE = 15;
+    public static final int RESTART = 16;
 
     private static final Path PATH = new Path();
     private static final RectF R = new RectF();
@@ -69,10 +69,7 @@ public final class Glyphs {
                 stop(canvas, cx, cy, size, paint);
                 break;
             case MIC:
-                mic(canvas, false, cx, cy, size, paint);
-                break;
-            case MIC_OFF:
-                mic(canvas, true, cx, cy, size, paint);
+                mic(canvas, cx, cy, size, paint);
                 break;
             case HANGUP:
                 hangup(canvas, cx, cy, size, paint);
@@ -95,11 +92,34 @@ public final class Glyphs {
             case CLOSE:
                 close(canvas, cx, cy, size, paint);
                 break;
+            case RESTART:
+                restart(canvas, cx, cy, size, paint);
+                break;
             default:
                 break;
         }
         paint.setStyle(Paint.Style.FILL);
         paint.setStrokeWidth(0.0f);
+    }
+
+    /** Restart: a ring open at the top right, with an arrowhead at its end pointing on clockwise. */
+    private static void restart(Canvas canvas, float cx, float cy, float size, Paint paint) {
+        float radius = 0.33f * size;
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(0.12f * size);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        R.set(cx - radius, cy - radius, cx + radius, cy + radius);
+        canvas.drawArc(R, -60.0f, 290.0f, false, paint);
+        // arrowhead at the arc's end (-90 deg, the top), pointing right
+        float tipX = cx + 0.02f * size, tipY = cy - radius;
+        float a = 0.16f * size;
+        PATH.reset();
+        PATH.moveTo(tipX + a, tipY);
+        PATH.lineTo(tipX - a * 0.35f, tipY - a);
+        PATH.lineTo(tipX - a * 0.35f, tipY + a);
+        PATH.close();
+        paint.setStyle(Paint.Style.FILL);
+        canvas.drawPath(PATH, paint);
     }
 
     /** A cross: two rounded diagonal strokes. */
@@ -180,8 +200,8 @@ public final class Glyphs {
         canvas.drawRoundRect(R, size * 0.12f, size * 0.12f, paint);
     }
 
-    /** Microphone capsule, stand and base; the "off" variant adds a diagonal slash. */
-    private static void mic(Canvas canvas, boolean off, float cx, float cy, float size, Paint paint) {
+    /** Microphone capsule, stand and base. */
+    private static void mic(Canvas canvas, float cx, float cy, float size, Paint paint) {
         R.set(cx - (size * 0.16f), cy - (size * 0.46f), cx + (size * 0.16f), cy + (size * 0.12f));
         canvas.drawRoundRect(R, size * 0.16f, size * 0.16f, paint);
         strokeRound(paint, size * 0.085f);
@@ -189,9 +209,6 @@ public final class Glyphs {
         canvas.drawArc(R, 0.0f, 180.0f, false, paint);
         canvas.drawLine(cx, cy + (size * 0.27f), cx, cy + (size * 0.42f), paint);
         canvas.drawLine(cx - (size * 0.15f), cy + (size * 0.44f), cx + (size * 0.15f), cy + (size * 0.44f), paint);
-        if (off) {
-            canvas.drawLine(cx - (size * 0.4f), cy - (size * 0.44f), cx + (size * 0.4f), cy + (size * 0.44f), paint);
-        }
         paint.setStrokeCap(Paint.Cap.BUTT);
     }
 

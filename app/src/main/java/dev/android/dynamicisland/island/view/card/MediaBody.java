@@ -55,6 +55,11 @@ public final class MediaBody extends CardBody {
     private static final float CUSTOM_DP = 38.0f;
     private static final float OUTPUT_ICON_DP = 14.0f;
     private static final float APP_ICON_DP = 16.0f;
+    /** Output and app icons either side of the camera hole, and how far below the hole's centre line they sit. */
+    private static final float HOLE_ICON_DP = 22.0f;
+    private static final float HOLE_ICON_DROP_DP = 10.0f;
+    /** App glyphs carry more padding than the output icon: drawn larger so both look the same size. */
+    private static final float HOLE_APP_SCALE = 1.3f;
     /** Slide-up distance of a row while it fades in. */
     private static final float ROW_SLIDE_DP = 8.0f;
     private static final String NO_DURATION = "--:--";
@@ -65,6 +70,11 @@ public final class MediaBody extends CardBody {
     float barRight;
     private final float seekCenter;
     private final String line;
+    /** The whole "Title • Artist", and its cut for the wider room it has when the app glyph sits beside the hole. */
+    private final CharSequence joinedLine;
+    private String wideLine;
+    /** Extra room under the controls around the hole, so the bottom margin matches the sides (iOS: even margins). */
+    private static final float HOLE_BOTTOM_EXTRA_DP = 6.0f;
     private final String topText;
     private final boolean topIsOutput;
     private final Path wavePath = new Path();
@@ -81,6 +91,8 @@ public final class MediaBody extends CardBody {
     private float waveAmp;
     private long lastWaveFrame;
     private float wavePhase;
+    /** Rows below the top one move up by this (negative px) when the top row sits next to the camera hole. */
+    private float rowShift;
 
     public MediaBody(IslandView owner, IslandItem item, float w) {
         super(owner, item, w);
@@ -96,6 +108,7 @@ public final class MediaBody extends CardBody {
             joined = joined.length() == 0 ? item.subtitle : joined + SEPARATOR + item.subtitle;
         }
         line = TextUtils.ellipsize(joined, owner.mediaTitlePaint(), Math.max(1, lineRoom), TextUtils.TruncateAt.END).toString();
+        joinedLine = joined;
 
         topIsOutput = item.mediaOutput != null;
         CharSequence top = topIsOutput
@@ -126,6 +139,7 @@ public final class MediaBody extends CardBody {
 
     /** Whether ({@code lx}, {@code ly}) in body coordinates is on the seek bar and the item can seek. */
     public boolean onSeekBar(float lx, float ly) {
+        ly -= holeRow ? rowShift : 0.0f;
         return item.mediaSeek != null && item.mediaDuration > 0 && ly > seekCenter - owner.dp(18.0f)
                 && ly < seekCenter + owner.dp(18.0f) && lx > barLeft - owner.dp(12.0f) && lx < barRight + owner.dp(12.0f);
     }
@@ -182,13 +196,19 @@ public final class MediaBody extends CardBody {
         fx.advance(now);
         float p0 = rowAlpha(elapsed, 0);
         float dy0 = (1.0f - p0) * owner.dp(ROW_SLIDE_DP);
-        drawTopRow(c, x, y + dy0, alpha * p0);
+        if (holeRow) {
+            drawHoleLanes(c, x, y + dy0, alpha * p0);
+        } else {
+            drawTopRow(c, x, y + dy0, alpha * p0);
+        }
+        float by = y; // the buttons were moved with the rows already
+        y += holeRow ? rowShift : 0.0f;
         drawTitleRow(c, x, y + dy0, alpha * p0);
         float p1 = rowAlpha(elapsed, 1);
         drawSeekRow(c, x, y + (1.0f - p1) * owner.dp(ROW_SLIDE_DP), alpha * p1, fx, now);
         float p2 = rowAlpha(elapsed, 2);
-        drawButtons(c, x, y + (1.0f - p2) * owner.dp(ROW_SLIDE_DP), alpha * p2);
-        drawControlGlyphs(c, x, y + (1.0f - p2) * owner.dp(ROW_SLIDE_DP), alpha * p2, fx, now);
+        drawButtons(c, x, by + (1.0f - p2) * owner.dp(ROW_SLIDE_DP), alpha * p2);
+        drawControlGlyphs(c, x, by + (1.0f - p2) * owner.dp(ROW_SLIDE_DP), alpha * p2, fx, now);
     }
 
     private static final float MORPH_TAU_S = 0.075f;
@@ -346,6 +366,9 @@ public final class MediaBody extends CardBody {
     /** The glow, stretched to the card's current shape so it always fills the card edge to edge. */
     @Override public MediaFx materialMusic() { return owner.mediaFx(item); }
 
+    /** How far the cover slides down for the hole band, as a share of the band (the crop moves, the card stays full). */
+    private static final float ART_SHIFT = 0.5f;
+
     /** The cover art filling the card (stock player look); the colour glow when there is no art. */
     @Override
     public void drawBackground(Canvas c, RectF frame, float alpha) {
@@ -356,12 +379,49 @@ public final class MediaBody extends CardBody {
         int save = c.save();
         c.translate(frame.left, frame.top);
         c.scale(frame.width() / w, frame.height() / h);
-        if (fx.hasBackdrop()) {
-            fx.drawBackdrop(c, 0.0f, 0.0f, w, h, alpha, now);
+        if (fx.hasBackdrop() && holeRow) {
+            // around the camera hole the top is black: the cover, unchanged, starts just under the hole
+            c.clipRect(0.0f, 0.0f, w, h);
+            float base = owner.dp(HEIGHT_DP);
+            fx.drawBackdrop(c, 0.0f, shadeBottom, w, base, alpha, now, 0.0f);
+        } else if (fx.hasBackdrop()) {
+            fx.drawBackdrop(c, 0.0f, 0.0f, w, h, alpha, now, topInset * ART_SHIFT);
         } else {
             fx.drawGlow(c, 0.0f, 0.0f, w, h, alpha, now);
         }
         c.restoreToCount(save);
+    }
+
+    /**
+     * Around the camera hole the top row moves next to the hole, as iOS puts an activity's leading and trailing
+     * content beside the camera: output device (or app) left of it, the app's glyph right of it. The title follows
+     * right under the hole, so no black stripe is left empty.
+     */
+    @Override
+    protected float layoutBesideHole() {
+        Paint.FontMetrics fm = owner.mediaTitlePaint().getFontMetrics();
+        float titleMid = holeBottom + owner.dp(4) + (fm.descent - fm.ascent) / 2.0f;
+        rowShift = Math.min(0.0f, titleMid - owner.dp(TITLE_ROW_DP));
+        shiftButtons(rowShift);
+        wideLine = TextUtils.ellipsize(joinedLine, owner.mediaTitlePaint(), Math.max(1, w - pad * 2), TextUtils.TruncateAt.END).toString();
+        return owner.dp(HEIGHT_DP) + rowShift + owner.dp(HOLE_BOTTOM_EXTRA_DP);
+    }
+
+    private void drawHoleLanes(Canvas c, float x, float y, float alpha) {
+        float size = owner.dp(HOLE_ICON_DP);
+        // lowered off the card's top edge (still clear of the title under the hole), same size both sides
+        float midY = y + Math.min(holeMid + owner.dp(HOLE_ICON_DROP_DP), holeBottom - size / 2 + owner.dp(3));
+        float left = x + pad + owner.dp(4);
+        // only symbols wrap the camera (as iOS puts artwork and waveform there): no words in the corners
+        if (topIsOutput && item.mediaOutputIcon != null && leftLane(pad) > size + owner.dp(4)) {
+            owner.drawDrawable(c, item.mediaOutputIcon, false, Colors.WHITE, left, midY - size / 2, size, alpha, 0);
+        }
+        android.graphics.drawable.Drawable glyph = item.appGlyph;
+        if (glyph != null && rightLane(pad) > size + owner.dp(4)) {
+            float g = size * HOLE_APP_SCALE;
+            float cx = x + w - pad - owner.dp(4) - size / 2;
+            owner.drawDrawable(c, glyph, false, Colors.WHITE, cx - g / 2, midY - g / 2, g, alpha, 0);
+        }
     }
 
     /** Output device (or the app name) at the left, the player app's icon at the right. */
@@ -376,25 +436,34 @@ public final class MediaBody extends CardBody {
             }
             TextPaint p = owner.smallPaint;
             p.setColor(Colors.withAlpha(Colors.TEXT_BODY, alpha));
-            Paint.FontMetrics fm = p.getFontMetrics();
+            Paint.FontMetrics fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(p);
             c.drawText(topText, left, midY - (fm.ascent + fm.descent) / 2, p);
         }
     }
 
     /** "Title  •  Artist" on one centred line, led by the app's glyph like the stock player. */
+    private String measuredLine;
+    private float measuredSize = -1, measuredW;
+
     private void drawTitleRow(Canvas c, float x, float y, float alpha) {
         if (line.isEmpty()) return;
+        String line = holeRow && wideLine != null ? wideLine : this.line;
         TextPaint p = owner.mediaTitlePaint();
         float midY = y + owner.dp(TITLE_ROW_DP);
-        float textW = p.measureText(line);
-        float glyph = item.appGlyph != null ? owner.dp(APP_ICON_DP) : 0;
+        if (line != measuredLine || p.getTextSize() != measuredSize) { // the line is fixed per body: measure once
+            measuredLine = line;
+            measuredSize = p.getTextSize();
+            measuredW = p.measureText(line);
+        }
+        float textW = measuredW;
+        float glyph = item.appGlyph != null && !holeRow ? owner.dp(APP_ICON_DP) : 0;
         float gap = glyph > 0 ? owner.dp(6) : 0;
         float start = x + (w - textW - glyph - gap) / 2.0f;
         if (glyph > 0) {
             owner.drawDrawable(c, item.appGlyph, false, Colors.WHITE, start, midY - glyph / 2, glyph, alpha, 0);
         }
         p.setColor(Colors.withAlpha(Colors.WHITE, alpha));
-        Paint.FontMetrics fm = p.getFontMetrics();
+        Paint.FontMetrics fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(p);
         c.drawText(line, start + glyph + gap, midY - (fm.ascent + fm.descent) / 2, p);
     }
 
@@ -439,10 +508,10 @@ public final class MediaBody extends CardBody {
 
         String current = dragged ? IslandView.formatTimePadded((long) (Math.max(0L, item.mediaDuration) * owner.seekFraction)) : clockText;
         owner.smallPaint.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, alpha));
-        Paint.FontMetrics fm = owner.smallPaint.getFontMetrics();
+        Paint.FontMetrics fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.smallPaint);
         float baseline = y + owner.dp(TIME_ROW_DP) - (fm.ascent + fm.descent) / 2.0f;
-        owner.drawTime(c, item.key + "#pos", current, owner.smallPaint, left + owner.dp(2), baseline, false);
-        owner.drawTime(c, item.key + "#dur", durationText, owner.smallPaint,
+        owner.drawTime(c, timeKey(0, "#pos"), current, owner.smallPaint, left + owner.dp(2), baseline, false);
+        owner.drawTime(c, timeKey(1, "#dur"), durationText, owner.smallPaint,
                 right - owner.dp(2) - IslandView.timeWidth(owner.smallPaint, durationText), baseline, false);
     }
 
@@ -453,6 +522,8 @@ public final class MediaBody extends CardBody {
      * track times the layer's frequency, all scrolling towards the thumb at 9 rad/s * speed 0.5. It sinks into
      * the bar on pause.
      */
+    private float[] waveEnvelope = new float[0];
+
     private void drawWave(Canvas c, float left, float right, float trackWidth, float baseY, float alpha, WaveTheme theme, long now) {
         float dt = lastWaveFrame == 0 ? 0 : Math.min(0.05f, (now - lastWaveFrame) / 1000f);
         lastWaveFrame = now;
@@ -464,6 +535,11 @@ public final class MediaBody extends CardBody {
         if (waveAmp < 0.01f || span < owner.dp(24) || trackWidth <= 0) return;
         float amp = owner.dp(WAVE_DP) / 2f * waveAmp; // stock: A * (1 - sin) peaks at 2A
         int steps = Math.max(12, Math.round(span / owner.dp(2)));
+        if (waveEnvelope.length != steps + 1) {
+            // the taper depends only on the step count: worked out once, not per layer per frame
+            waveEnvelope = new float[steps + 1];
+            for (int s = 0; s <= steps; s++) waveEnvelope[s] = (float) Math.sqrt(Math.sin(Math.PI * s / (double) steps));
+        }
         for (int layer = 0; layer < WaveTheme.LAYERS; layer++) {
             wavePath.rewind();
             wavePath.moveTo(left, baseY);
@@ -474,7 +550,7 @@ public final class MediaBody extends CardBody {
                 float u = s / (float) steps;
                 float px = left + span * u;
                 // taper into the bar at both ends of the played part
-                float env = (float) Math.pow(Math.sin(Math.PI * u), 0.5);
+                float env = waveEnvelope[s];
                 float wave = (float) (1.0 - Math.sin(k * (px - left) + phase));
                 wavePath.lineTo(px, baseY - a * wave * env);
             }

@@ -44,6 +44,9 @@ public final class PillBackgroundSampler {
     private boolean enabled, destroyed, failed, registered, notified;
     private long generation;
     private Float lastLuma;
+    /** How long the pill region must stay still before sampling moves to it. */
+    private static final long SETTLE_MS = 120;
+    private final Runnable settled = this::refresh;
     private final View.OnAttachStateChangeListener attach = new View.OnAttachStateChangeListener() {
         @Override public void onViewAttachedToWindow(View v) { refresh(); }
         @Override public void onViewDetachedFromWindow(View v) { release(); emit(null); }
@@ -63,13 +66,30 @@ public final class PillBackgroundSampler {
 
     /** Called by the window's pre-draw; bounds are display pixels, not view-local coordinates. */
     public void update(Rect screenBounds, boolean enabled) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            apply(screenBounds, enabled); // the pre-draw path: no copies, no lambdas
+            return;
+        }
         Rect copy = screenBounds == null ? new Rect() : new Rect(screenBounds);
-        onMain(() -> {
-            if (destroyed) return;
-            this.enabled = enabled && !copy.isEmpty() && copy.left >= 0 && copy.top >= 0;
-            bounds.set(copy);
-            refresh();
-        });
+        main.post(() -> apply(copy, enabled));
+    }
+
+    private void apply(Rect screenBounds, boolean enabled) {
+        if (destroyed) return;
+        boolean empty = screenBounds == null || screenBounds.isEmpty();
+        boolean on = enabled && !empty && screenBounds.left >= 0 && screenBounds.top >= 0;
+        boolean sameBounds = empty ? bounds.isEmpty() : bounds.equals(screenBounds);
+        if (on == this.enabled && sameBounds && (!on || registered)) return; // nothing changed this frame
+        this.enabled = on;
+        if (empty) bounds.setEmpty(); else bounds.set(screenBounds);
+        if (on && registered && !sameBounds) {
+            // The pill is moving (resize, bounce): re-registering with SurfaceFlinger on every frame costs a
+            // binder round trip and a new stop layer each time. Keep sampling the old region until it settles.
+            main.removeCallbacks(settled);
+            main.postDelayed(settled, SETTLE_MS);
+            return;
+        }
+        refresh();
     }
 
     public void destroy() {
@@ -77,6 +97,7 @@ public final class PillBackgroundSampler {
             if (destroyed) return;
             destroyed = true;
             enabled = false;
+            main.removeCallbacks(settled);
             view.removeOnAttachStateChangeListener(attach);
             release();
             emit(null);

@@ -1,5 +1,7 @@
 package dev.android.dynamicisland.island.view;
 
+import dev.android.dynamicisland.settings.ModuleSettings;
+
 /**
  * Sizes of the island in pixels plus where the camera hole sits. The dimensions derive from the display
  * density once; the hole geometry and the limits that depend on the screen are refreshed by
@@ -82,9 +84,9 @@ final class Metrics {
         return true;
     }
 
-    /** How wide the pill may get when the widest is left on automatic: a little over half the screen, at most 232 dp. */
     /** Room the empty pill leaves around the camera hole, in total. */
     static final float IDLE_MARGIN_DP = 16.0f;
+    /** How wide the pill may get when the widest is left on automatic: a little over half the screen, at most 232 dp. */
     static final float AUTO_MAX_SCREEN_SHARE = 0.56f;
     static final float AUTO_MAX_PHONE_DP = 232.0f;
     static final float AUTO_MAX_TABLET_DP = 300.0f;
@@ -129,11 +131,57 @@ final class Metrics {
     }
 
     float cardWidth() {
+        if (ModuleSettings.expandAroundHole() && !tablet) {
+            // the card hangs from the pill's top: keep the same gap at the sides as above it
+            return screenW - (aroundHoleGap() * 2.0f);
+        }
         return Math.min(screenW - (cardMargin * 2.0f), cardMaxW);
     }
 
-    /** Top edge of the first card. */
+    /** Gap between a card opened around the camera hole and the screen's top edge, used at its sides too. */
+    float aroundHoleGap() {
+        return Math.max(dp(4.0f), cy - (pillH / 2.0f));
+    }
+
+    /** Smallest band the camera hole needs above a card's content, below the hole's bottom edge. */
+    static final float HOLE_BAND_GAP_DP = 6.0f;
+
+    /**
+     * Height of the black band at the top of the first card that holds the camera hole when the island opens
+     * around it, from the card's top (the pill's top) to just under the hole; 0 when cards open below it.
+     */
+    float holeBand() {
+        if (!ModuleSettings.expandAroundHole()) {
+            return 0.0f;
+        }
+        float holeBottom = cy + (Math.max(holeD, pillH) / 2.0f);
+        return holeBottom - (cy - (pillH / 2.0f)) + dp(HOLE_BAND_GAP_DP);
+    }
+
+    /** Room kept free at each side of the camera hole, and below it, by content laid out next to it. */
+    static final float HOLE_SIDE_GAP_DP = 14.0f;
+    static final float HOLE_BELOW_GAP_DP = 4.0f;
+
+    /**
+     * Tells the first card where the camera hole sits in its own coordinates when the island opens around it,
+     * so the body can put a row next to the hole (or, if it cannot, keep a band free above its content).
+     */
+    void fitAroundHole(dev.android.dynamicisland.island.view.card.CardBody body) {
+        if (!ModuleSettings.expandAroundHole()) {
+            body.clearHole();
+            return;
+        }
+        float top = stackTop();
+        float left = centredLeft(body.w);
+        float r = Math.max(holeD, dp(10.0f)) / 2.0f;
+        float side = r + dp(HOLE_SIDE_GAP_DP);
+        body.fitHole(cy - top, (cx - left) - side, (cx - left) + side, (cy - top) + r + dp(HOLE_BELOW_GAP_DP), pillH, holeBand());
+    }
+
     float stackTop() {
+        if (ModuleSettings.expandAroundHole()) {
+            return cy - (pillH / 2.0f); // the card grows out of the pill's own top, so it wraps the camera hole
+        }
         return cy + (pillH / 2.0f) + dp(8.0f);
     }
 
@@ -150,6 +198,9 @@ final class Metrics {
     /** Left edge of a content block of width {@code w} centred under the hole but kept inside the margins. */
     float centredLeft(float w) {
         float left = cx - (w / 2.0f);
+        if (ModuleSettings.expandAroundHole() && !tablet && w > screenW - (cardMargin * 2.0f)) {
+            return (screenW - w) / 2.0f; // wider than the usual margins allow: equal gaps on both sides
+        }
         if (w < screenW) {
             left = Math.max(Math.min(left, (screenW - cardMargin) - w), cardMargin);
         }

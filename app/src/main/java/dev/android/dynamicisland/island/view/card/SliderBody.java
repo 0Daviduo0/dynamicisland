@@ -37,10 +37,14 @@ public class SliderBody extends CardBody {
     final float pad;
     private final String label;
     final float trackLeft;
-    final float trackRight;
-    final float trackTop;
+    /** Track edges; around the camera hole the track moves up under it and shortens to make room for the button. */
+    float trackRight;
+    float trackTop;
     final float trackH;
     private final Path clip = new Path();
+    private float baseTrackTop = -1.0f, baseTrackRight;
+    /** The label cut to the lane left of the camera hole. */
+    private String holeLabel;
 
     public SliderBody(IslandView owner, IslandItem item, float w) {
         super(owner, item, w);
@@ -73,6 +77,33 @@ public class SliderBody extends CardBody {
         trackLeft = pad;
         trackRight = w - pad;
         h = trackTop + trackH + pad;
+    }
+
+    @Override
+    protected void onClearHole() {
+        if (baseTrackTop < 0.0f) {
+            baseTrackTop = trackTop;
+            baseTrackRight = trackRight;
+        }
+        trackTop = baseTrackTop;
+        trackRight = baseTrackRight;
+        holeLabel = null;
+    }
+
+    /**
+     * Around the camera hole (plain slider cards: volume, brightness, ...): nothing beside the camera, the bar right
+     * under it with its symbol and the power button at its end, like the iOS volume and brightness controls.
+     */
+    @Override
+    protected float layoutBesideHole() {
+        if (getClass() != SliderBody.class) return -1.0f;
+        trackTop = holeBottom + owner.dp(10.0f);
+        if (!buttons.isEmpty()) {
+            Btn off = buttons.get(0);
+            trackRight = baseTrackRight - off.r.width() - owner.dp(12.0f);
+            shiftButtons(trackTop + trackH / 2.0f - off.r.centerY());
+        }
+        return trackTop + trackH + pad;
     }
 
     /** Whether ({@code lx}, {@code ly}) in body coordinates is on the slider and the item has one. */
@@ -175,7 +206,11 @@ public class SliderBody extends CardBody {
             return;
         }
         owner.mediaTitlePaint().setColor(Colors.withAlpha(Colors.WHITE, alpha));
-        Paint.FontMetrics fm = owner.mediaTitlePaint().getFontMetrics();
+        Paint.FontMetrics fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.mediaTitlePaint());
+        if (holeRow) {
+            if (holeLabel != null) c.drawText(holeLabel, x + pad, y + holeMid - ((fm.ascent + fm.descent) / 2.0f), owner.mediaTitlePaint());
+            return;
+        }
         c.drawText(label, x + pad, y + pad + (owner.dp(HEADER_BUTTON_DP) / 2.0f) - ((fm.ascent + fm.descent) / 2.0f), owner.mediaTitlePaint());
     }
 
@@ -201,18 +236,18 @@ public class SliderBody extends CardBody {
         if (text == null) {
             return;
         }
-        Paint.FontMetrics fm = owner.smallPaint.getFontMetrics();
+        Paint.FontMetrics fm = dev.android.dynamicisland.island.graphics.Fonts.metrics(owner.smallPaint);
         float x = right - owner.dp(VALUE_INSET_DP) - IslandView.timeWidth(owner.smallPaint, text);
         float baseline = top + (height / 2.0f) - ((fm.ascent + fm.descent) / 2.0f);
         c.save();
         c.clipRect(left, top, fillRight, top + height);
         owner.smallPaint.setColor(Colors.withAlpha(ICON_ON_FILL, alpha));
-        owner.drawTime(c, item.key + "#value", text, owner.smallPaint, x, baseline, false);
+        owner.drawTime(c, timeKey(0, "#value"), text, owner.smallPaint, x, baseline, false);
         c.restore();
         c.save();
         c.clipRect(fillRight, top, right, top + height);
         owner.smallPaint.setColor(Colors.withAlpha(Colors.WHITE, 0.9f * alpha));
-        owner.drawTime(c, item.key + "#value", text, owner.smallPaint, x, baseline, false);
+        owner.drawTime(c, timeKey(0, "#value"), text, owner.smallPaint, x, baseline, false);
         c.restore();
     }
 

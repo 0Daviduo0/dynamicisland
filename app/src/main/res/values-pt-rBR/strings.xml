@@ -35,4 +35,10 @@
     <string name="group_calls">Chamadas</string>
     <string name="imode_title">iMotion</string>
     <string name="imode_desc">Abra uma atividade por vez com desfoque e movimento coordenados. Deslize para os lados para alternar entre as atividades. Deslize para cima para ocultar as cápsulas e puxe para baixo perto da câmera para exibi-las novamente.</string>
+    <string name="expand_position">Posição do cartão expandido</string>
+    <string name="desc_expand_position">Onde um cartão aberto aparece.</string>
+    <string name="expand_below">Abaixo da câmera</string>
+    <string name="expand_around">Em volta da câmera</string>
+    <string name="card_roundness_concentric">Cantos concêntricos</string>
+    <string name="card_roundness_concentric_summary">Seguem automaticamente a curva dos cantos da tela, como no iOS.</string>
 </resources>

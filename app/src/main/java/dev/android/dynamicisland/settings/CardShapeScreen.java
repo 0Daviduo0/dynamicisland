@@ -19,6 +19,10 @@ final class CardShapeScreen {
 
     /** The switch and, once it is on, the radius slider; the preview above follows the slider while it moves. */
     void addTo(LinearLayout group) {
+        Switch concentric = activity.toggle(group, R.string.card_roundness_concentric, R.string.card_roundness_concentric_summary,
+                ModuleSettings.KEY_CONCENTRIC_CORNERS, false);
+        OneUi.listen(concentric, enabled -> activity.refresh());
+        if (concentric.isChecked()) return; // the radius follows the screen: nothing to set by hand
         Switch custom = activity.toggle(group, R.string.card_roundness_custom,
                 R.string.card_roundness_summary, ModuleSettings.KEY_CUSTOM_CARD_ROUNDNESS, false);
         OneUi.listen(custom, enabled -> activity.refresh());

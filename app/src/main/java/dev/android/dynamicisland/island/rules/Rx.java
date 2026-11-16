@@ -156,11 +156,6 @@ public final class Rx {
         return find(text) != null;
     }
 
-    /** True when the pattern was switched off after repeated time-outs. */
-    public boolean disabled() {
-        return timeouts >= MAX_TIMEOUTS;
-    }
-
     private static CharSequence clip(CharSequence text) {
         return text.length() > MAX_INPUT ? text.subSequence(0, MAX_INPUT) : text;
     }

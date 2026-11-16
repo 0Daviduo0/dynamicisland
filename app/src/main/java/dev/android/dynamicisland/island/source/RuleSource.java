@@ -47,7 +47,6 @@ public final class RuleSource {
     private static final int DEFAULT_ACCENT = 0xFF0A84FF;
     private static final String KEY_PREFIX = "rule:";
     private static final String LIVEBRIDGE_PACKAGE = "com.locnall.KimGiSa";
-    /** Rules whose stage can go backwards (a route, a connection), so the newest notification decides; the others keep their highest stage. */
     /** Keys of the cards whose rule hides the original notification. */
     private final Set<String> hideOriginal = new HashSet<>();
     private volatile Set<String> hiddenOriginals = Collections.emptySet();
@@ -79,7 +78,7 @@ public final class RuleSource {
     private final Map<String, Long> endedAt = new HashMap<>();
 
     public RuleSource(Context ctx, Handler main, Runnable onChange) {
-        this.apps = new AppLook(ctx);
+        this.apps = AppLook.shared(ctx);
         this.main = main;
         this.onChange = onChange;
         this.expiryTick = () -> onChange.run();
@@ -502,7 +501,7 @@ public final class RuleSource {
             case "navigation":
                 return 0xFF0A84FF;
             case "external_device":
-                return 0xFF3DB653;
+                return dev.android.dynamicisland.island.graphics.Colors.CALL_GREEN;
             case "vpn":
                 return 0xFFBF5AF2;
             case "parcel":

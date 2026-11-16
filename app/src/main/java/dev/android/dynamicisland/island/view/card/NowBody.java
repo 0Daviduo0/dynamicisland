@@ -76,6 +76,12 @@ public final class NowBody extends CardBody {
         h = (buttons > 0 ? top + owner.dp(16) + buttons : top) + owner.dp(20);
     }
 
+    /** Without a header the first row has 18dp free above it, which the band around the camera hole can cover. */
+    @Override
+    protected float bandOverlap() {
+        return item.nowHeader == null ? owner.dp(12) : 0;
+    }
+
     public static boolean supports(IslandItem it) {
         return it.eventLayout == IslandItem.EventLayout.NOW;
     }
@@ -108,7 +114,7 @@ public final class NowBody extends CardBody {
         TextPaint p = owner.smallPaint;
         p.setColor(Colors.withAlpha(Colors.TEXT_BODY, a));
         p.getFontMetrics(fm);
-        String text = ellipsize(item.nowHeader, p, right - left);
+        String text = fitted(20, item.nowHeader, p, Math.max(1, right - left));
         c.drawText(text, left, midY - (fm.ascent + fm.descent) / 2f, p);
     }
 
@@ -168,7 +174,7 @@ public final class NowBody extends CardBody {
             TextPaint p = owner.smallPaint;
             p.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a));
             p.getFontMetrics(fm);
-            String shown = ellipsize(label, p, maxW);
+            String shown = fitted(21, label, p, Math.max(1, maxW));
             float lw = p.measureText(shown);
             c.drawText(shown, right - lw, blockTop - fm.ascent, p);
             used = Math.max(used, lw);
@@ -178,7 +184,7 @@ public final class NowBody extends CardBody {
         big.setColor(Colors.withAlpha(Colors.WHITE, a));
         int save = c.save();
         c.scale(scale, scale, right, baseline);
-        owner.drawTime(c, item.key + "#now", value, big, right - natural, baseline, item.chronoCountDown);
+        owner.drawTime(c, timeKey(0, "#now"), value, big, right - natural, baseline, item.chronoCountDown);
         c.restoreToCount(save);
         return right - used - owner.dp(12);
     }
@@ -194,13 +200,13 @@ public final class NowBody extends CardBody {
             TextPaint p = owner.titlePaint;
             p.setColor(Colors.withAlpha(Colors.WHITE, a));
             p.getFontMetrics(fm);
-            c.drawText(ellipsize(item.title, p, room), left, top - fm.ascent, p);
+            c.drawText(fitted(22, item.title, p, Math.max(1, room)), left, top - fm.ascent, p);
         }
         if (sub) {
             TextPaint p = owner.bodyPaint;
             p.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a));
             p.getFontMetrics(fm);
-            c.drawText(ellipsize(item.subtitle, p, room), left, top + h1 + owner.dp(2) - fm.ascent, p);
+            c.drawText(fitted(23, item.subtitle, p, Math.max(1, room)), left, top + h1 + owner.dp(2) - fm.ascent, p);
         }
     }
 
@@ -231,20 +237,16 @@ public final class NowBody extends CardBody {
         for (int i = 0; i < n; i++) {
             String[] stat = item.nowStats.get(i);
             float left = x + pad + i * colW;
-            String value = ellipsize(stat[0], vp, colW - owner.dp(8));
+            String value = fitted(30 + i * 2, stat[0], vp, Math.max(1, colW - owner.dp(8)));
             vp.setColor(Colors.withAlpha(Colors.WHITE, a));
-            owner.drawTime(c, item.key + "#stat" + i, value, vp, left, valueBase, false);
+            owner.drawTime(c, timeKey(10 + i, "#stat" + i), value, vp, left, valueBase, false);
             if (stat.length > 1 && stat[1] != null) {
                 lp.setColor(Colors.withAlpha(Colors.TEXT_SECONDARY, a));
-                c.drawText(ellipsize(stat[1], lp, colW - owner.dp(8)), left, labelBase, lp);
+                c.drawText(fitted(31 + i * 2, stat[1], lp, Math.max(1, colW - owner.dp(8))), left, labelBase, lp);
             }
         }
     }
 
-    private static String ellipsize(CharSequence text, TextPaint p, float room) {
-        if (text == null) return "";
-        return TextUtils.ellipsize(text, p, Math.max(1, room), TextUtils.TruncateAt.END).toString();
-    }
 
     private float lineH(Paint paint) {
         paint.getFontMetrics(fm);

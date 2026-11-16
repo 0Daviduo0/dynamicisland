@@ -712,4 +712,10 @@
     <string name="island_charge_now">지금: %1$s</string>
     <string name="island_charge_text_on">화면 켜짐: %1$s • %2$s</string>
     <string name="island_charge_text_off">화면 꺼짐: %1$s • %2$s</string>
+    <string name="expand_position">펼친 카드 위치</string>
+    <string name="desc_expand_position">열린 카드가 나타나는 위치입니다.</string>
+    <string name="expand_below">카메라 아래</string>
+    <string name="expand_around">카메라 둘레</string>
+    <string name="card_roundness_concentric">동심 모서리</string>
+    <string name="card_roundness_concentric_summary">iOS처럼 화면 모서리 곡선에 자동으로 맞춥니다.</string>
 </resources>

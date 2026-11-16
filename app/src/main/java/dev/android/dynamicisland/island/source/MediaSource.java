@@ -60,7 +60,8 @@ public final class MediaSource {
         }
     };
     private static final int MAX_RETIRED = 4;
-    private final AppAssets assets;
+    private final AppLook apps;
+    private final AppAssets actionIcons;
     private final Map<MediaSession.Token, Session> sessions = new HashMap<>();
     /**
      * The last card of players whose session ended (a stopped song): the notification shade keeps showing their player
@@ -103,7 +104,8 @@ public final class MediaSource {
         this.ctx = ctx;
         this.main = main;
         this.onChange = onChange;
-        this.assets = new AppAssets(ctx);
+        this.apps = AppLook.shared(ctx);
+        this.actionIcons = new AppAssets(ctx);
     }
 
     public void start() {
@@ -154,10 +156,9 @@ public final class MediaSource {
             live.add(s.controller.getPackageName());
         }
         covers.keySet().retainAll(live);
-        assets.retainActionIconsOf(live);
+        actionIcons.retainActionIconsOf(live);
     }
 
-    /** Existing callers already supply their foreground decision; null means no filtering. */
     /** Small icon of each package's media notification, from the notification snapshot. */
     private static final java.util.Map<String, android.graphics.drawable.Icon> SMALL_ICONS = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Map<android.graphics.drawable.Icon, Drawable> SMALL_DRAWABLES =
@@ -309,7 +310,9 @@ public final class MediaSource {
         if (left <= 0) {
             return null;
         }
-        main.postDelayed(() -> rebuildCards(pkg), 20 + left);
+        if (cover.graceRebuild == null) cover.graceRebuild = () -> rebuildCards(pkg);
+        main.removeCallbacks(cover.graceRebuild); // one pending rebuild per player, not one per card build
+        main.postDelayed(cover.graceRebuild, 20 + left);
         return cover.art;
     }
 
@@ -332,16 +335,11 @@ public final class MediaSource {
     }
 
     public String appLabel(String pkg) {
-        return assets.label(pkg);
+        return apps.labelOrNull(pkg);
     }
 
     public Drawable appIcon(String pkg) {
-        return assets.icon(pkg);
-    }
-
-    /** Accent colour of a cover, see {@link CoverAccent#of}. */
-    static int vibrant(Bitmap art) {
-        return CoverAccent.of(art);
+        return apps.icon(pkg);
     }
 
     /** The last cover of one player and the track it belonged to. */
@@ -352,6 +350,7 @@ public final class MediaSource {
         /** Track that arrived without art, and since when we have been waiting for it. */
         String pendingTrack;
         long pendingSince;
+        Runnable graceRebuild;
     }
 
     /** One media session with the latest playback state and metadata it reported. */
@@ -371,6 +370,7 @@ public final class MediaSource {
         private ArtworkPalette palette;
         /** Seed for the stock wave theme: the art's (or, without art, the app icon's) primary colour. */
         private Object seedSource;
+        private BitmapDrawable artIcon;
         private int waveSeed;
 
         Session(MediaController controller) {
@@ -515,7 +515,7 @@ public final class MediaSource {
             it.packageName = pkg;
             it.userId = userId;
             it.playing = isPlaying();
-            it.appName = assets.label(pkg);
+            it.appName = apps.labelOrNull(pkg);
             it.trailing = IslandItem.Trailing.WAVEFORM;
             it.postTime = lastActive;
             it.contentIntent = controller.getSessionActivity();
@@ -558,7 +558,7 @@ public final class MediaSource {
                 palette = art == null ? null : (cover == null || cover.art != art)
                         ? CoverAccent.palette(art) : cover.palette;
             }
-            Drawable appIcon = assets.icon(pkg);
+            Drawable appIcon = apps.icon(pkg);
             Object seedFrom = art != null ? art : appIcon;
             if (seedFrom != seedSource) {
                 seedSource = seedFrom;
@@ -567,8 +567,10 @@ public final class MediaSource {
             it.mediaWaveSeed = waveSeed;
             it.art = art;
             if (art != null) {
-                it.icon = new BitmapDrawable(ctx.getResources(), art);
-                it.cardImage = new BitmapDrawable(ctx.getResources(), art);
+                // both slots draw the same bitmap: one shared state, two light drawables, rebuilt only for new art
+                if (artIcon == null || artIcon.getBitmap() != art) artIcon = new BitmapDrawable(ctx.getResources(), art);
+                it.icon = artIcon.getConstantState().newDrawable(ctx.getResources());
+                it.cardImage = artIcon.getConstantState().newDrawable(ctx.getResources());
             } else {
                 it.icon = appIcon;
                 it.cardImage = appIcon;
@@ -630,7 +632,7 @@ public final class MediaSource {
             for (PlaybackState.CustomAction custom : state.getCustomActions()) {
                 Drawable icon;
                 try {
-                    icon = assets.actionIcon(pkg, custom.getIcon());
+                    icon = actionIcons.actionIcon(pkg, custom.getIcon());
                 } catch (Throwable t) {
                     icon = null;
                 }

@@ -712,4 +712,10 @@
     <string name="island_charge_now">当前：%1$s</string>
     <string name="island_charge_text_on">屏幕亮起: %1$s • %2$s</string>
     <string name="island_charge_text_off">屏幕熄灭: %1$s • %2$s</string>
+    <string name="expand_position">展开卡片位置</string>
+    <string name="desc_expand_position">打开的卡片显示的位置。</string>
+    <string name="expand_below">摄像头下方</string>
+    <string name="expand_around">环绕摄像头</string>
+    <string name="card_roundness_concentric">同心圆角</string>
+    <string name="card_roundness_concentric_summary">自动贴合屏幕圆角的弧度，与 iOS 一致。</string>
 </resources>

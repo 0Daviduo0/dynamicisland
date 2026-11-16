@@ -6,7 +6,6 @@ import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.media.audiofx.Visualizer;
 import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.SystemClock;
 import dev.android.dynamicisland.xposed.Diagnostics;
 import dev.android.dynamicisland.xposed.XLog;
@@ -33,6 +32,13 @@ public final class CallAudio {
     private final Runnable onLevel;
     private volatile float level;
     private volatile long lastLevelAt;
+    private long notifiedAt;
+    private static final long QUIET_NOTIFY_MS = 250;
+    /** Next read of the 25 Hz loops, reused so they allocate nothing. Worker thread only. */
+    private int nextToken, nextIndex;
+    private Visualizer.MeasurementPeakRms nextPeak;
+    private final Runnable readRecordNext = () -> readRecord(nextToken, nextIndex);
+    private final Runnable readVisualizerNext = () -> readVisualizer(nextToken, nextPeak);
     private volatile int generation;
     private String wanted;
 
@@ -46,9 +52,7 @@ public final class CallAudio {
     public CallAudio(Context context, Runnable onLevel) {
         this.context = context;
         this.onLevel = onLevel;
-        HandlerThread thread = new HandlerThread("IslandCallAudio");
-        thread.start();
-        worker = new dev.android.dynamicisland.xposed.GuardedHandler(thread.getLooper());
+        worker = new dev.android.dynamicisland.xposed.GuardedHandler(AudioThread.looper());
     }
 
     /**
@@ -135,7 +139,9 @@ public final class CallAudio {
                 startRecord(token, index + 1);
                 return;
             }
-            worker.postDelayed(() -> readRecord(token, index), READ_MS);
+            nextToken = token;
+            nextIndex = index;
+            worker.postDelayed(readRecordNext, READ_MS);
         } catch (Throwable t) {
             stop();
             startRecord(token, index + 1);
@@ -167,15 +173,22 @@ public final class CallAudio {
                 float db = m.mRms / 100f;
                 publish(Math.max(0f, Math.min(1f, (db + 58f) / 46f)));
             }
-            worker.postDelayed(() -> readVisualizer(token, m), READ_MS);
+            nextToken = token;
+            nextPeak = m;
+            worker.postDelayed(readVisualizerNext, READ_MS);
         } catch (Throwable t) {
             stop();
         }
     }
 
     private void publish(float value) {
+        long now = SystemClock.uptimeMillis();
+        float before = level;
         level = value;
-        lastLevelAt = SystemClock.uptimeMillis();
+        lastLevelAt = now;
+        // a steady level (silence, mostly) need not wake the main thread 25 times a second
+        if (Math.abs(value - before) < 0.004f && now - notifiedAt < QUIET_NOTIFY_MS) return;
+        notifiedAt = now;
         onLevel.run();
     }
 

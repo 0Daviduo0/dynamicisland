@@ -42,7 +42,7 @@ public final class EventSource {
     private static final long BLUETOOTH_MS = 4500;
     private static final int LOW_BATTERY_PERCENT = 15;
 
-    private static final int GREEN = 0xFF3DB653;
+    private static final int GREEN = dev.android.dynamicisland.island.graphics.Colors.CALL_GREEN;
     private static final int RED = 0xFFFF453A;
     private static final int ORANGE = 0xFFFF9F0A;
     private static final int BLUE = 0xFF0A84FF;
@@ -524,8 +524,6 @@ public final class EventSource {
         it.pillColor = 0;
         return it;
     }
-
-    /** The module has no string resources inside System UI, so pick the language here. */
 
     /** For tests. */
     List<IslandItem> snapshot() {

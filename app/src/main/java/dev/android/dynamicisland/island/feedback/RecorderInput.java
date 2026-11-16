@@ -7,7 +7,6 @@ import android.media.AudioRecord;
 import android.media.AudioRecordingConfiguration;
 import android.media.MediaRecorder;
 import android.os.Handler;
-import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.PowerManager;
 import dev.android.dynamicisland.xposed.Diagnostics;
@@ -27,21 +26,57 @@ public final class RecorderInput {
     private final Runnable onChanged;
     public final RecordingEnvelope envelope = new RecordingEnvelope();
     private volatile int generation;
-    private String wantedKey;
+    private volatile String wantedKey;
+    /** Last level the recording app itself reported (elapsedRealtime), see {@link #ACTION_LEVEL}. */
+    private volatile long appLevelAt = -1;
+    /**
+     * A recording app hooked by the module (Samsung Voice Recorder) sends its own input level: no second
+     * microphone, which the audio policy would answer by silencing the real recording.
+     */
+    public static final String ACTION_LEVEL = "dev.android.dynamicisland.action.RECORDING_LEVEL";
+    public static final String EXTRA_LEVEL = "level";
+    /** App levels this recent keep the concurrent microphone off. */
+    private static final long APP_LEVEL_MS = 3000;
     // Worker thread only, except the callback's immutable snapshot.
     private AudioRecord recorder;
     private AudioManager.AudioRecordingCallback callback;
     private final short[] pcm = new short[800];
-    private int reads;
+    private int reads, ticks;
+    /** The next read, reused so the 25 Hz loop allocates nothing. Worker thread only. */
+    private String readKey;
+    private int readToken;
+    private final Runnable readNext = () -> read(readKey, readToken);
 
     public RecorderInput(Context context, Runnable onChanged) {
         this.context = context;
         this.onChanged = onChanged;
         audio = context.getSystemService(AudioManager.class);
         power = context.getSystemService(PowerManager.class);
-        HandlerThread thread = new HandlerThread("IslandRecordingInput");
-        thread.start();
-        worker = new dev.android.dynamicisland.xposed.GuardedHandler(thread.getLooper());
+        worker = new dev.android.dynamicisland.xposed.GuardedHandler(AudioThread.looper());
+        try {
+            // only a level 0..1 is read from it: anything sending it can at most move the waveform
+            context.registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, android.content.Intent intent) {
+                    onAppLevel(intent.getFloatExtra(EXTRA_LEVEL, -1f));
+                }
+            }, new android.content.IntentFilter(ACTION_LEVEL), null, worker, Context.RECEIVER_EXPORTED);
+        } catch (Throwable t) {
+            XLog.once("recording level receiver", t);
+        }
+    }
+
+    /** Worker thread. */
+    private void onAppLevel(float level) {
+        String key = wantedKey;
+        if (key == null || !(level >= 0f && level <= 1f)) return;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (appLevelAt < 0 || recorder != null) {
+            stop();
+            report("levels from the recording app");
+        }
+        appLevelAt = now;
+        envelope.add(key, level, now);
+        main.post(onChanged);
     }
 
     /** Main thread. A failed attempt is retried only after the target changes (pause/resume/new session). */
@@ -63,6 +98,10 @@ public final class RecorderInput {
     @android.annotation.SuppressLint("MissingPermission")
     private void start(String key, int token) {
         if (token != generation) return;
+        if (appLevelAt >= 0 && android.os.SystemClock.elapsedRealtime() - appLevelAt < APP_LEVEL_MS) {
+            report("levels from the recording app");
+            return;
+        }
         try {
             if (audio == null || audio.isMicrophoneMute() || power == null || !power.isInteractive()) {
                 report("microphone muted or screen off");
@@ -93,6 +132,7 @@ public final class RecorderInput {
                 throw new IllegalStateException("microphone did not start");
             }
             reads = 0;
+            ticks = 0;
             report("capturing concurrent microphone (VOICE_RECOGNITION)");
             read(key, token);
         } catch (Throwable error) {
@@ -104,14 +144,18 @@ public final class RecorderInput {
         if (token != generation) return;
         try {
             if (recorder == null) return;
-            if (!power.isInteractive() || audio.isMicrophoneMute()) {
-                fail(key, token, "stopped: screen off or microphone muted", null);
-                return;
-            }
-            AudioRecordingConfiguration own = recorder.getActiveRecordingConfiguration();
-            if (own != null && own.isClientSilenced()) {
-                fail(key, token, "blocked: concurrent input is silenced by audio policy", null);
-                return;
+            // Binder checks once a second, not on every 40 ms read: sleep and doze already clear the target,
+            // and the recording callback reports silencing as it happens.
+            if (ticks++ % 25 == 0) {
+                if (!power.isInteractive() || audio.isMicrophoneMute()) {
+                    fail(key, token, "stopped: screen off or microphone muted", null);
+                    return;
+                }
+                AudioRecordingConfiguration own = recorder.getActiveRecordingConfiguration();
+                if (own != null && own.isClientSilenced()) {
+                    fail(key, token, "blocked: concurrent input is silenced by audio policy", null);
+                    return;
+                }
             }
             int count = recorder.read(pcm, 0, pcm.length, AudioRecord.READ_NON_BLOCKING);
             if (count < 0) throw new IllegalStateException("microphone read: " + count);
@@ -122,7 +166,9 @@ public final class RecorderInput {
                 if (++reads % 25 == 0) report(level > .01f ? "capturing; input signal detected" : "capturing; input currently quiet");
                 main.post(onChanged);
             }
-            worker.postDelayed(() -> read(key, token), 40);
+            readKey = key;
+            readToken = token;
+            worker.postDelayed(readNext, 40);
         } catch (Throwable error) {
             fail(key, token, "read failed: " + error.getClass().getSimpleName(), error);
         }

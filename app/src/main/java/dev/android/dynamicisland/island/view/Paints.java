@@ -26,7 +26,6 @@ final class Paints {
     final TextPaint bigTime = text();
     final TextPaint button = text();
     private TextPaint mediaTitle;
-    private TextPaint mediaArtist;
 
     private final DisplayMetrics display;
     private Object fontKey;
@@ -73,15 +72,6 @@ final class Paints {
         return mediaTitle;
     }
 
-    TextPaint mediaArtist() {
-        if (mediaArtist == null) {
-            mediaArtist = text();
-            mediaArtist.setTypeface(Fonts.of(400));
-            mediaArtist.setTextSize(sp(14.0f));
-        }
-        return mediaArtist;
-    }
-
     /**
      * One UI "flip font" changes the system typeface at runtime.
      *
@@ -100,6 +90,7 @@ final class Paints {
         Diagnostics.fact("island font", Fonts.source());
         Typeface regular = Fonts.of(400);
         Typeface semibold = Fonts.of(600);
+        dev.android.dynamicisland.island.graphics.BatteryGauge.setNumberFace(semibold);
         Typeface medium = Fonts.of(500);
         trail.setTypeface(semibold);
         small.setTypeface(medium);
@@ -109,9 +100,6 @@ final class Paints {
         button.setTypeface(medium);
         if (mediaTitle != null) {
             mediaTitle.setTypeface(semibold);
-        }
-        if (mediaArtist != null) {
-            mediaArtist.setTypeface(regular);
         }
     }
 }

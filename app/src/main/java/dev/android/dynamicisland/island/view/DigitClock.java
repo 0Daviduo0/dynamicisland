@@ -38,6 +38,36 @@ final class DigitClock {
      * neighbour whatever font, weight, size or "tnum" support the paint has.
      */
     private static float digitCell(Paint paint) {
+        // ten measureText calls per field per frame otherwise: remember the last few paints' answers
+        float size = paint.getTextSize(), spacing = paint.getLetterSpacing(), scaleX = paint.getTextScaleX();
+        android.graphics.Typeface face = paint.getTypeface();
+        String features = paint.getFontFeatureSettings();
+        for (int i = 0; i < CELL_CACHE; i++) {
+            if (cellFace[i] == face && cellSize[i] == size && cellSpacing[i] == spacing && cellScaleX[i] == scaleX
+                    && java.util.Objects.equals(cellFeatures[i], features) && cellWidth[i] > 0) {
+                return cellWidth[i];
+            }
+        }
+        float widest = measureCell(paint);
+        int slot = nextCell;
+        nextCell = (slot + 1) % CELL_CACHE;
+        cellFace[slot] = face;
+        cellSize[slot] = size;
+        cellSpacing[slot] = spacing;
+        cellScaleX[slot] = scaleX;
+        cellFeatures[slot] = features;
+        cellWidth[slot] = widest;
+        return widest;
+    }
+
+    private static final int CELL_CACHE = 6;
+    private static final android.graphics.Typeface[] cellFace = new android.graphics.Typeface[CELL_CACHE];
+    private static final float[] cellSize = new float[CELL_CACHE], cellSpacing = new float[CELL_CACHE],
+            cellScaleX = new float[CELL_CACHE], cellWidth = new float[CELL_CACHE];
+    private static final String[] cellFeatures = new String[CELL_CACHE];
+    private static int nextCell;
+
+    private static float measureCell(Paint paint) {
         float widest = 0.0f;
         for (int d = 0; d < DIGITS.length(); d++) {
             widest = Math.max(widest, paint.measureText(DIGITS, d, d + 1));
@@ -180,9 +210,9 @@ final class DigitClock {
             c.clipRect(x - (1.2f * cell), fm.ascent + baseline, x + (0.2f * cell), fm.descent + baseline);
             // the old digit leaves in the direction of travel while the new one overshoots into place
             float out = easeInOut(Math.min(1.0f, 1.25f * p));
-            float oldX = (x - cell) + ((cell - paint.measureText(String.valueOf(roll.from[i]))) / 2.0f);
+            float oldX = (x - cell) + ((cell - paint.measureText(roll.from, i, 1)) / 2.0f);
             paint.setAlpha(Math.round(baseAlpha * (1.0f - out)));
-            c.drawText(String.valueOf(roll.from[i]), oldX, baseline - ((dir * out) * travel), paint);
+            c.drawText(roll.from, i, 1, oldX, baseline - ((dir * out) * travel), paint);
             float in = easeOutBack(p);
             paint.setAlpha(Math.round(baseAlpha * clamp01(1.8f * p)));
             c.drawText(text, i, i + 1, gx, ((1.0f - in) * dir * travel) + baseline, paint);
