@@ -91,9 +91,9 @@ final class Waveform {
         drawBars(c, flatPaint, scratch, left, midY);
     }
 
-    /** Music: one flat colour from the middle of the artwork palette, lifted so it reads on the black pill. */
+    /** Music: one flat colour from the stock player's wave theme, lifted so it reads on the black pill. */
     void draw(Canvas c, RectF scratch, float left, float midY, MediaFx fx, float alpha, long now) {
-        draw(c, scratch, left, midY, fx.waveformColorAt(0.5f, now), alpha);
+        draw(c, scratch, left, midY, fx.visualizerColor(now), alpha);
     }
 
     private void drawBars(Canvas c, Paint paint, RectF scratch, float left, float midY) {

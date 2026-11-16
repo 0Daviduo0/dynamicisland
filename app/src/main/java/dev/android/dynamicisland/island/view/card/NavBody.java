@@ -43,6 +43,9 @@ public final class NavBody extends CardBody {
     private final StaticLayout instruction;
     private final TextPaint instructionPaint, distancePaint;
     private final String arrival;
+    /** Bar colours, readable on black: one per leg when the trip has segments, else the single route colour. */
+    private final int[] legColors;
+    private final int routeColor;
     /** Content moves by this (px) when the card opens around the camera. */
     private float shift;
 
@@ -107,6 +110,17 @@ public final class NavBody extends CardBody {
             buttons.add(b);
         }
         h = bottom + pad;
+
+        // colours lifted for the black card once here, not per segment on every frame
+        int[] segs = item.progressSegmentColors;
+        if (item.hasSegments()) {
+            legColors = new int[segs.length];
+            for (int i = 0; i < segs.length; i++) legColors[i] = Colors.readableOnBlack(segs[i] | Colors.BLACK);
+            routeColor = 0;
+        } else {
+            legColors = null;
+            routeColor = Colors.readableOnBlack(segs != null && segs.length > 0 ? segs[segs.length - 1] | Colors.BLACK : item.fillAccent());
+        }
     }
 
     private float sp(float v) {
@@ -184,12 +198,10 @@ public final class NavBody extends CardBody {
             drawLegs(c, left, width, top, at, alpha);
             return;
         }
-        int route = item.progressSegmentColors != null && item.progressSegmentColors.length > 0
-                ? item.progressSegmentColors[item.progressSegmentColors.length - 1] | Colors.BLACK : item.fillAccent();
         owner.fillPaint.setColor(Colors.withAlpha(Colors.TRACK, alpha));
         owner.tmpRect.set(left, top, at, top + barH);
         c.drawRoundRect(owner.tmpRect, barH / 2.0f, barH / 2.0f, owner.fillPaint);
-        owner.fillPaint.setColor(Colors.withAlpha(Colors.readableOnBlack(route), alpha));
+        owner.fillPaint.setColor(Colors.withAlpha(routeColor, alpha));
         owner.tmpRect.set(at, top, left + width, top + barH);
         c.drawRoundRect(owner.tmpRect, barH / 2.0f, barH / 2.0f, owner.fillPaint);
         float dot = owner.dp(5.0f);
@@ -219,7 +231,7 @@ public final class NavBody extends CardBody {
             float split = Math.min(end, Math.max(start, at));
             owner.fillPaint.setColor(Colors.withAlpha(Colors.TRACK, alpha));
             owner.drawBarSpan(c, start, split, start, top, barH, dashed, owner.fillPaint);
-            owner.fillPaint.setColor(Colors.withAlpha(Colors.readableOnBlack(item.progressSegmentColors[i] | Colors.BLACK), alpha));
+            owner.fillPaint.setColor(Colors.withAlpha(legColors[i], alpha));
             owner.drawBarSpan(c, split, end, start, top, barH, dashed, owner.fillPaint);
         }
         c.restoreToCount(save);

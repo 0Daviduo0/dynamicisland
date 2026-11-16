@@ -7,6 +7,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import dev.android.dynamicisland.island.graphics.Colors;
+import dev.android.dynamicisland.island.graphics.WaveTheme;
 import dev.android.dynamicisland.island.model.IslandItem;
 import dev.android.dynamicisland.island.view.IslandView;
 import dev.android.dynamicisland.island.view.Tween;
@@ -75,6 +76,9 @@ public final class MediaFx {
     final ToneSet setTo;
     /** Separate from the scalar accent/ToneSet: secondary artwork colours only affect the waveform. */
     private final WaveformPaletteTransition waveformPalette = new WaveformPaletteTransition();
+    /** Visualizer bars: one colour of the stock player's wave theme, faded like the palette. */
+    private final WaveformPaletteTransition visualizer = new WaveformPaletteTransition();
+    private int themeSeed, themeThumb;
     /** Drift speed easing between paused and playing. */
     final Tween speed;
 
@@ -102,6 +106,16 @@ public final class MediaFx {
         }
         lastSeq = item.seq;
         waveformPalette.sync(item.mediaPalette, item.accent, item.seq, now);
+        if (item.mediaWaveSeed != 0) {
+            // sync runs every frame: map the seed to its theme only when it changes
+            if (item.mediaWaveSeed != themeSeed) {
+                themeSeed = item.mediaWaveSeed;
+                themeThumb = WaveTheme.forSeed(themeSeed).thumb();
+            }
+            visualizer.sync(null, themeThumb, item.seq, now);
+        } else {
+            visualizer.sync(item.mediaPalette, item.accent, item.seq, now);
+        }
         float targetSpeed = item.playing ? 1.0f : IslandView.PAUSED_SPEED;
         float targetGlow = item.playing ? 1.0f : IslandView.PAUSED_GLOW;
         if (!primed) {
@@ -217,6 +231,11 @@ public final class MediaFx {
         return Colors.blend(accentFrom, accentTo, IslandView.easeInOut((now - accentStart) / ACCENT_FADE_MS));
     }
 
+    /** Colour of the music visualizer: the stock wave theme's main colour (the player's seek bar). */
+    public int visualizerColor(long now) {
+        return visualizer.colorAt(0.5f, ModuleSettings.stillMusicEffects() ? now + IslandView.FX_COLOR_MS : now);
+    }
+
     /** Current waveform colour at a clamped horizontal position (0..1), without allocating a palette. */
     public int waveformColorAt(float position, long now) {
         return waveformPalette.colorAt(position, ModuleSettings.stillMusicEffects() ? now + IslandView.FX_COLOR_MS : now);
@@ -225,7 +244,7 @@ public final class MediaFx {
     /** Whether something is still easing, so the view must keep redrawing. */
     public boolean animating(long now) {
         if (ModuleSettings.stillMusicEffects()) return false;
-        return speed.running(now) || glow.running(now) || waveformPalette.running(now)
+        return speed.running(now) || glow.running(now) || waveformPalette.running(now) || visualizer.running(now)
                 || now - accentStart < IslandView.FX_COLOR_MS || now - flipStart < IslandView.FLIP_MS;
     }
 

@@ -56,7 +56,7 @@ public final class MediaBody extends CardBody {
     private static final float OUTPUT_ICON_DP = 14.0f;
     private static final float APP_ICON_DP = 16.0f;
     /** Output and app icons either side of the camera hole, and how far below the hole's centre line they sit. */
-    private static final float HOLE_ICON_DP = 22.0f;
+    private static final float HOLE_ICON_DP = 18.0f;
     private static final float HOLE_ICON_DROP_DP = 10.0f;
     /** App glyphs carry more padding than the output icon: drawn larger so both look the same size. */
     private static final float HOLE_APP_SCALE = 1.3f;
